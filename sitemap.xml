@@ -3,6 +3,13 @@
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>/</loc>
+    <lastmod>2023-10-02T00:23:54+02:00</lastmod>
+  </url><url>
+    <loc>/posts/marianas-web/</loc>
+    <lastmod>2023-10-02T00:23:54+02:00</lastmod>
+  </url><url>
+    <loc>/posts/</loc>
+    <lastmod>2023-10-02T00:23:54+02:00</lastmod>
   </url><url>
     <loc>/about/</loc>
     <priority>0</priority>

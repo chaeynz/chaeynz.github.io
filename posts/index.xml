@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title></title>
-    <link>/</link>
-    <description>Recent content on </description>
+    <title>Posts on </title>
+    <link>/posts/</link>
+    <description>Recent content in Posts on </description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Mon, 02 Oct 2023 00:23:54 +0200</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 02 Oct 2023 00:23:54 +0200</lastBuildDate><atom:link href="/posts/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Marianas Web</title>
       <link>/posts/marianas-web/</link>
@@ -67,69 +67,6 @@ The most secure government secrets would be transferred here and noone will be a
 &lt;h1 id=&#34;conclusion&#34;&gt;Conclusion&lt;/h1&gt;
 &lt;p&gt;Having a network that noone knows about is an interesting idea, especially since it would be right at our feet.
 However the way it is described doesn&lt;/p&gt;
-</content>
-    </item>
-    
-    <item>
-      <title></title>
-      <link>/about/</link>
-      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
-      
-      <guid>/about/</guid>
-      <description> &amp;mdash;&amp;ndash;BEGIN PGP SIGNED MESSAGE&amp;mdash;&amp;ndash;
-Hash: SHA256
-Welcome to my page.
-I am Chaeynz
-&amp;mdash;&amp;ndash;BEGIN PGP SIGNATURE&amp;mdash;&amp;ndash;
-iQGzBAEBCAAdFiEE/OHD/kdfKA5L9iXStCqzyGmRjGgFAmTisSUACgkQtCqzyGmR
-jGhvfgv+I+wrAIWuPhEQk21gHiYhkYiQ2c+kmtFk3R17hbOfhzmM+pYzsz9IrHH7
-Nlb3fkoE3tLLHxRsmNu1jhyOv/hYLxdiC1HM3rw7PLlC5rkD8gJCIePmt9m/Tqsu
-90BqzyljEJMSWZl8yF9IuYxLv2nf0wiuA+gVgzmyIQSH61mcNU8Uuh5YTs7b3gjq
-STo31RCQk425ZpuW8ZoXrN7sxhlxi41WGG5KTK6y3IwWoBEvoGkoOsZqmMKiJI7+
-j2YarqOxz/V0LK8ecE0R0vJ42xMEDWl4EfK/1OECKGJZ5qkG+TI6rzJnbNkmYsoe
-1KXxU62tCKUJswh2M4HIArgVMRyE5fptGIIvdBpxAUUxKFcjQBU2oKvNV2kpVExp
-au2AdbTr7WXGc+CjbHtSIXSdX2TxN05jSD74f0w787gV4lxvDFWNYOzzgX9WSFNC
-NZM1DwQSW1wYLrhuSoDonM3tOFPpRigMDH/svUkssJRkg0Q2EJl8vRq8xccbEHTZ
-lb8PzOzH
-=EOXR
-&amp;mdash;&amp;ndash;END PGP SIGNATURE&amp;mdash;&amp;ndash; Certifications Cisco Certified Network Associate Fortinet Network Security Expert 4 MD-100 Languages C++ Python Powershell HTML CSS X86 Assembly PHP </description>
-      <content>&lt;blockquote&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;&amp;mdash;&amp;ndash;BEGIN PGP SIGNED MESSAGE&amp;mdash;&amp;ndash;&lt;/p&gt;
-&lt;p&gt;Hash: SHA256&lt;/p&gt;
-&lt;p&gt;Welcome to my page.&lt;/p&gt;
-&lt;p&gt;I am Chaeynz&lt;/p&gt;
-&lt;p&gt;&amp;mdash;&amp;ndash;BEGIN PGP SIGNATURE&amp;mdash;&amp;ndash;&lt;/p&gt;
-&lt;p&gt;iQGzBAEBCAAdFiEE/OHD/kdfKA5L9iXStCqzyGmRjGgFAmTisSUACgkQtCqzyGmR&lt;/p&gt;
-&lt;p&gt;jGhvfgv+I+wrAIWuPhEQk21gHiYhkYiQ2c+kmtFk3R17hbOfhzmM+pYzsz9IrHH7&lt;/p&gt;
-&lt;p&gt;Nlb3fkoE3tLLHxRsmNu1jhyOv/hYLxdiC1HM3rw7PLlC5rkD8gJCIePmt9m/Tqsu&lt;/p&gt;
-&lt;p&gt;90BqzyljEJMSWZl8yF9IuYxLv2nf0wiuA+gVgzmyIQSH61mcNU8Uuh5YTs7b3gjq&lt;/p&gt;
-&lt;p&gt;STo31RCQk425ZpuW8ZoXrN7sxhlxi41WGG5KTK6y3IwWoBEvoGkoOsZqmMKiJI7+&lt;/p&gt;
-&lt;p&gt;j2YarqOxz/V0LK8ecE0R0vJ42xMEDWl4EfK/1OECKGJZ5qkG+TI6rzJnbNkmYsoe&lt;/p&gt;
-&lt;p&gt;1KXxU62tCKUJswh2M4HIArgVMRyE5fptGIIvdBpxAUUxKFcjQBU2oKvNV2kpVExp&lt;/p&gt;
-&lt;p&gt;au2AdbTr7WXGc+CjbHtSIXSdX2TxN05jSD74f0w787gV4lxvDFWNYOzzgX9WSFNC&lt;/p&gt;
-&lt;p&gt;NZM1DwQSW1wYLrhuSoDonM3tOFPpRigMDH/svUkssJRkg0Q2EJl8vRq8xccbEHTZ&lt;/p&gt;
-&lt;p&gt;lb8PzOzH&lt;/p&gt;
-&lt;p&gt;=EOXR&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;/blockquote&gt;
-&lt;h2 id=&#34;-----end-pgp-signature-----&#34;&gt;&amp;mdash;&amp;ndash;END PGP SIGNATURE&amp;mdash;&amp;ndash;&lt;/h2&gt;
-&lt;h1 id=&#34;certifications&#34;&gt;Certifications&lt;/h1&gt;
-&lt;ul&gt;
-&lt;li&gt;Cisco Certified Network Associate&lt;/li&gt;
-&lt;li&gt;Fortinet Network Security Expert 4&lt;/li&gt;
-&lt;li&gt;MD-100&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h1 id=&#34;languages&#34;&gt;Languages&lt;/h1&gt;
-&lt;ul&gt;
-&lt;li&gt;C++&lt;/li&gt;
-&lt;li&gt;Python&lt;/li&gt;
-&lt;li&gt;Powershell&lt;/li&gt;
-&lt;li&gt;HTML&lt;/li&gt;
-&lt;li&gt;CSS&lt;/li&gt;
-&lt;li&gt;X86 Assembly&lt;/li&gt;
-&lt;li&gt;PHP&lt;/li&gt;
-&lt;/ul&gt;
 </content>
     </item>
     
