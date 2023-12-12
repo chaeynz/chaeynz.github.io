@@ -5,11 +5,11 @@
     <link>/</link>
     <description>Recent content on </description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Tue, 12 Dec 2023 00:23:54 +0200</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 12 Dec 2023 00:21:47 +0200</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Building a Hub and Spoke VPN with WireGuard</title>
       <link>/posts/hub-spoke-with-wireguard/</link>
-      <pubDate>Tue, 12 Dec 2023 00:23:54 +0200</pubDate>
+      <pubDate>Tue, 12 Dec 2023 00:21:47 +0200</pubDate>
       
       <guid>/posts/hub-spoke-with-wireguard/</guid>
       <description>&amp;ldquo;If you don&amp;rsquo;t use a s2s tunnel between on-prem and cloud, are you really a netsec engineer?&amp;rdquo;
@@ -184,12 +184,6 @@ Spoke B will then send its response to this traffic to the Hub which forwards th
 &lt;td&gt;Raspberry Pi 3B+&lt;/td&gt;
 &lt;td&gt;Debian 11&lt;/td&gt;
 &lt;td&gt;APT Package&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;Pylee&lt;/td&gt;
-&lt;td&gt;RouterBoard&lt;/td&gt;
-&lt;td&gt;MikroTik RouterOS&lt;/td&gt;
-&lt;td&gt;MikroTik&lt;/td&gt;
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
@@ -523,6 +517,7 @@ Comparably the use of commands through autocompletion also felt like my experien
 &lt;li&gt;CommanderKronos | grep &amp;lsquo;Feedback&amp;rsquo;&lt;/li&gt;
 &lt;li&gt;p3nnyW | grep &amp;lsquo;Feedback&amp;rdquo;&lt;/li&gt;
 &lt;li&gt;Keo | grep &amp;lsquo;Feedback&amp;rsquo;&lt;/li&gt;
+&lt;li&gt;bat | grep &amp;lsquo;QXF1YV9zYWx1dGVfRkI=&amp;rsquo;&lt;/li&gt;
 &lt;li&gt;Tati | grep &amp;lsquo;Mate&amp;rsquo;&lt;/li&gt;
 &lt;li&gt;pylee | grep &#39;&amp;rsquo;&lt;/li&gt;
 &lt;/ul&gt;
