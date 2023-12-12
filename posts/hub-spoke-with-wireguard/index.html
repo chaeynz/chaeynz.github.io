@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+    <title>Building a Hub to Spoke VPN with WireGuard :: </title>
+  
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="&#34;If you don’t use a s2s tunnel between on-prem and cloud, are you really a netsec engineer?&#34;" />
+<meta name="keywords" content="" />
+
+  <meta name="robots" content="noodp" />
+
+<link rel="canonical" href="/posts/hub-spoke-with-wireguard/" />
+
+
+
+
+
+
+  
+  
+  
+  
+  
+  <link rel="stylesheet" href="/styles.css">
+
+
+
+
+
+
+
+  <link rel="shortcut icon" href="img/theme-colors/red.png">
+  <link rel="apple-touch-icon" href="img/theme-colors/red.png">
+
+
+
+<meta name="twitter:card" content="summary" />
+
+
+
+<meta property="og:locale" content="en" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Building a Hub to Spoke VPN with WireGuard">
+<meta property="og:description" content="&#34;If you don’t use a s2s tunnel between on-prem and cloud, are you really a netsec engineer?&#34;" />
+<meta property="og:url" content="/posts/hub-spoke-with-wireguard/" />
+<meta property="og:site_name" content="" />
+
+  
+    <meta property="og:image" content="img/favicon/red.png">
+  
+
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="627">
+
+
+  <meta property="article:published_time" content="2023-12-09 00:23:54 &#43;0200 &#43;0200" />
+
+
+
+
+
+
+
+
+
+
+
+
+</head>
+<body class="red">
+
+
+<div class="container center headings--one-size">
+
+  <header class="header">
+  <div class="header__inner">
+    <div class="header__logo">
+      <a href="">
+  <div class="logo">
+    chaeynz' blog
+  </div>
+</a>
+
+    </div>
+    
+    
+  </div>
+  
+</header>
+
+
+  <div class="content">
+    
+<article class="post">
+  <h1 class="post-title">
+    <a href="/posts/hub-spoke-with-wireguard/">Building a Hub to Spoke VPN with WireGuard</a>
+  </h1>
+  <div class="post-meta"><time class="post-date">2023-12-09</time><span class="post-author">chaeynz</span></div>
+
+  
+  
+
+
+  
+
+  <div class="post-content"><div>
+        <blockquote>
+<p>&ldquo;If you don&rsquo;t use a s2s tunnel between on-prem and cloud, are you really a netsec engineer?&rdquo;</p>
+<ul>
+<li>CommanderKronos</li>
+</ul>
+</blockquote>
+<h1 id="1-table-of-contents">1. Table of Contents<a href="#1-table-of-contents" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<ol>
+<li><a href="#1-table-of-contents">Table of Contents</a></li>
+<li><a href="#2-introduction">Introduction</a></li>
+<li><a href="#3-vpn-intro-for-dummies">VPN intro for dummies</a></li>
+<li><a href="#4-what-is-a-vpn">What is a VPN?</a></li>
+<li><a href="#5-how-does-a-hub-and-spoke-vpn-work">How does a Hub-and-Spoke VPN work?</a></li>
+<li><a href="#6-tech-stack">Tech Stack</a></li>
+<li><a href="#7-network-design">Network Design</a></li>
+<li><a href="#8-configuring-wireguard-tunnels-and-routing">Configuring WireGuard tunnels and routing</a></li>
+<li><a href="#9-allowedips-in-wireguard">AllowedIPs in WireGuard</a></li>
+<li><a href="#10-configuring-domain-records-in-route-53-for-geolocation-routing">Configuring domain records in Route 53 for Geolocation Routing</a></li>
+<li><a href="#11-creating-a-vpc-peering-connection">Creating a VPC Peering Connection</a></li>
+<li><a href="#12-configuring-the-proxy">Configuring the Proxy</a></li>
+<li><a href="#13-conclusion">Conclusion</a></li>
+<li><a href="#14-glossary">Glossary</a></li>
+<li><a href="#15-document-history">Document History</a></li>
+<li><a href="#16-sources">Sources</a></li>
+<li><a href="#17-special-thanks">Special thanks</a></li>
+</ol>
+<h1 id="2-introduction">2. Introduction<a href="#2-introduction" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>My father has a company, which has a small datacenter<br>
+In this datacenter there is a vSphere HCI Cluster</p>
+<p>For a long time we were using a jumphost to control machines in this vSphere environment, since my Dad is not focused on networking<br>
+I dislike this. TeamViewer is okay if you quickly need to help your grandma, but not as a permanent solution<br>
+Therefore I decided that we are going to build a VPN and connect directly with the network of our datacenter instead</p>
+<p>This has several advantages:</p>
+<ul>
+<li>Speed
+<ul>
+<li>No need to use RDP nested inside of a TeamViewer session</li>
+<li>Ability to route over AWS infrastructure through use of AWS VPC-Peering</li>
+</ul>
+</li>
+<li>Flexibility
+<ul>
+<li>Able to integrate cloud infrastructure with datacenter infrastructure</li>
+<li>Communication over any protocol, instead of just a Remote Desktop connection</li>
+</ul>
+</li>
+<li>Security
+<ul>
+<li>Send traffic to and from cloud resources over encrypted tunnel i.e. Syslog or Netflow to SIEM</li>
+</ul>
+</li>
+</ul>
+<p>The idea quickly became reality and now I&rsquo;m routing between several sites all around the globe with my own little AWS instance</p>
+<p><img src="/images/hub-spoke-wireguard/disconnected-sites-visualization.png" alt=""></p>
+<p>During this article I will elaborate on my journey how I got this Hub-and-spoke VPN running</p>
+<p>Specifically I will explain my design choices and technical implementation of the following:</p>
+<blockquote>
+<ul>
+<li><strong>Network design</strong></li>
+<li><strong>WireGuard VPN configuration</strong></li>
+<li><strong>Geolocation routing with AWS Route 53</strong></li>
+<li><strong>Proxying VPN connection over VPC Peering connection</strong></li>
+</ul>
+</blockquote>
+<h1 id="3-vpn-intro-for-dummies">3. VPN intro for dummies<a href="#3-vpn-intro-for-dummies" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>Before I go into further detail on my specific setup, I want to provide an explanation of some VPN concepts, for readers that might not be familiar</p>
+<p>Using a VPN doesn&rsquo;t mean, that I installed NordVPN and selected a country</p>
+<p>This extremely popular usecase of VPNs is technically just a very small niche in a broad spectrum of possibilities</p>
+<hr>
+<p>The specific type of VPN that is used with Service Providers like NordVPN is a full-tunnel Client-to-Site VPN</p>
+<p>That means I am tunneling <em><strong>all</strong></em> my traffic destined for the internet <em><strong>to</strong></em> the VPN Server hosted by NordVPN</p>
+<p>The VPN Server will then forward the traffic to the internet for me, which is why the receiver of this traffic will see that the traffic is originating from a public IP which is owned by NordVPN</p>
+<p>This is a basic concept that is used by all VPN Service Providers like MullvadVPN, ProtonVPN, NordVPN, AirVPN, ExpressVPN, CyberGhost VPN and more</p>
+<p><strong>But there is much more!</strong></p>
+<p>Here is a list possible VPN scenarios:</p>
+<table>
+<thead>
+<tr>
+<th>Operation mode</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>full-tunnel</td>
+<td>ALL traffic that your client generates will be sent over the tunnel</td>
+</tr>
+<tr>
+<td>split-tunnel</td>
+<td>Choose the networks you want to access through the VPN. Will selectively route traffic with matching destination IP addresses over the tunnel</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Configuration</th>
+<th>Abbreviation</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Client-to-Client</td>
+<td>C2C</td>
+<td>One client connects to one client, without any of both forwarding traffic, while forming a virtual network</td>
+</tr>
+<tr>
+<td>Client-to-Site</td>
+<td>C2S</td>
+<td>The Site will forward traffic to other clients on its network</td>
+</tr>
+<tr>
+<td>Site-to-Site</td>
+<td>S2S</td>
+<td>Both networks &ldquo;merge&rdquo; with each other into one large network, because both have forwarding active</td>
+</tr>
+<tr>
+<td>Site-to-Multisite</td>
+<td>S2MS</td>
+<td>A Site connects to a VPN Server which forwards the traffic to several other Sites in a large network \ <del>I dont respect a difference to Site-to-Site</del></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h1 id="4-what-is-a-vpn">4. What is a VPN?<a href="#4-what-is-a-vpn" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>A VPN, in its original form, is a concept to create a <em>virtual network</em>, over a <em>less secure</em> network<br>
+This <em>less secure</em> network is often the internet. We don&rsquo;t trust people there!</p>
+<p>We use VPN protocols to encapsulate the original IP packet inside of another IP packet, which is meant for the VPN Server. This is known as tunneling</p>
+<p><strong>VPNs don&rsquo;t need to be complicated</strong></p>
+<p>VPN is just an abstraction, of what happens internally</p>
+<hr>
+<p>After , we know that after it happened, we end up with another network interface, which is a virtual interface that lets us access this <strong>virtual private network</strong></p>
+<hr>
+<p>You have to understand the different types, operation modes and what makes them unique, but you don&rsquo;t necessarily have to know how IPsec/WireGuard/SSL works internally</p>
+<h1 id="5-how-does-a-hub-and-spoke-vpn-work">5. How does a Hub-and-Spoke VPN work?<a href="#5-how-does-a-hub-and-spoke-vpn-work" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>I think that building a Hub-and-spoke VPN makes you understand, how a VPN protocol really works</p>
+<p>A Hub-and-Spoke VPN is a VPN topology, where a single device <strong>(Hub)</strong> acts as a router between multiple devices <strong>(Spokes)</strong> that connect to it</p>
+<p><img src="/images/hub-spoke-wireguard/example1.png" alt=""></p>
+<p>This means, that Spoke A, will be able to access Spoke B, while sending it&rsquo;s traffic to the Hub, which forwards this to Spoke B<br>
+Spoke B will then send its response to this traffic to the Hub which forwards the response to Spoke A</p>
+<h1 id="6-tech-stack">6. Tech Stack<a href="#6-tech-stack" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<hr>
+<table>
+<thead>
+<tr>
+<th>Site</th>
+<th>VPN Device - Hardware</th>
+<th>VPN Device - OS</th>
+<th>VPN Software</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AWS</td>
+<td>EC2 Instance t3.micro</td>
+<td><a href="https://aws.amazon.com/marketplace/pp/prodview-sf5gn6js6av54">MikroTik CHR</a></td>
+<td>MikroTik</td>
+</tr>
+<tr>
+<td>Pepper</td>
+<td>VM</td>
+<td>MikroTik CHR</td>
+<td>MikroTik</td>
+</tr>
+<tr>
+<td>Chaeynz</td>
+<td>Raspberry Pi 3B+</td>
+<td>Debian 11</td>
+<td>APT Package</td>
+</tr>
+<tr>
+<td>Pylee</td>
+<td>RouterBoard</td>
+<td>MikroTik RouterOS</td>
+<td>MikroTik</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>Specification of VPN Software</p>
+<ul>
+<li>MikroTik has it&rsquo;s own proprietary implementation of the WireGuard protocol, in contrast to the APT package, which uses the official implementation</li>
+</ul>
+</blockquote>
+<p>Since I have never worked with MikroTik I had a very nice learning curve during this project</p>
+<p>I have decided to set up the VPN Hub in AWS, simply for the flexibility the cloud provides and the possibility for close and easy integration with cloud resources</p>
+<p>For this project we decided to use MikroTik RouterOS / CHR, since it is a very affordable product</p>
+<p>The only exception is my Site which is currently running a Debian installation on a Raspberry Pi, where the APT package <em>wireguard</em> was installed</p>
+<p>The advantage of MikroTik RouterOS is, thajust t it includes an almost Enterprise-ready product, with fine-grained control over all things networking, aswell as a decent firewall<br>
+The only exception for being Enterprise-ready in my opinion is the lack of HA</p>
+<p>Looking back I found the firewall very confusing, but once you dig into it, it will give you fine-grained control over how the state of a connection is accounted for in firewall policies</p>
+<p>It works like iptables, in the way that it has input, output and forward chains.<br>
+The firewall is stateful, but requires you to create a policy to accept tracked connections</p>
+<p>The VPN protocol being used is solely WireGuard</p>
+<p>WireGuard is the fastest VPN protocol compared to the most popular ones IPsec and SSL</p>
+<p>Since every Spoke supports WireGuard, we decided to use it everywhere</p>
+<hr>
+<h1 id="7-network-design">7. Network design<a href="#7-network-design" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>Setting up my VPN network was a very interesting journey and it included several different technology concepts</p>
+<p>Let&rsquo;s go through my setup step by step</p>
+<p><img src="/images/hub-spoke-wireguard/network-design-global.png" alt=""></p>
+<p>The Gateways are the devices which are going to be responsible for routing the requests to the network on each Site.</p>
+<p>Each of the Sites form a Site-to-Site VPN connection to a central VPN hub which is my EC2 instance located in AWS.</p>
+<p>In the middle you can see a Proxy set up in AWS, which is going to be used by Sites from the Americas to connect to the VPN for performance reasons.</p>
+<hr>
+<p><strong>IP Design</strong></p>
+<p>Because I want to isolate each Site-to-Site connection on a network level, I created separate tunnel interfaces and will now define a rather large subnet for use in Point-to-Point connections</p>
+<blockquote>
+<p>Subnet: 172.31.255.0/24</p>
+</blockquote>
+<p>This /24 subnet will then be further subnetted into /31 subnets that I use as Point-to-Point connections</p>
+<p>The /31 subnet mask has been defined in RFC 3021 for use in Point-to-Point connections.<br>
+Since this saves 50% of my IP address space and honestly just sounds exciting to me, I will use them</p>
+<p>I like starting to count from the highest address, so this is how the first connection looks like:</p>
+<p><img src="/images/hub-spoke-wireguard/example2.png" alt=""></p>
+<table>
+<thead>
+<tr>
+<th>Site</th>
+<th>Interface</th>
+<th>IP</th>
+<th>Mask</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AWS</td>
+<td>s2s_aws2pepper</td>
+<td>172.31.255.255</td>
+<td>/31</td>
+</tr>
+<tr>
+<td>Pepper</td>
+<td>s2s_pepper2aws</td>
+<td>172.31.255.254</td>
+<td>/31</td>
+</tr>
+</tbody>
+</table>
+<p>The Hub will always be assigned the higher address in each /31 Subnet, while the &ldquo;connecting&rdquo; Site, so the Spoke, will use the lower address respectively</p>
+<hr>
+<p><strong>Overview</strong></p>
+<p>Let me expand this table so that you have a good overview over the entire portion of my network relevant for this post.</p>
+<table>
+<thead>
+<tr>
+<th>Gateway/Site</th>
+<th>Interface</th>
+<th>IP</th>
+<th>Subnet</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AWS</td>
+<td>ether1</td>
+<td>10.100.0.254</td>
+<td>10.100.0.0/24</td>
+</tr>
+<tr>
+<td>AWS</td>
+<td>s2s_aws2pepper</td>
+<td>172.31.255.255</td>
+<td>172.31.255.254/31</td>
+</tr>
+<tr>
+<td>AWS</td>
+<td>s2s_aws2chaeynz</td>
+<td>172.31.255.253</td>
+<td>172.31.255.252/31</td>
+</tr>
+<tr>
+<td>Pepper</td>
+<td>ether1</td>
+<td>10.0.0.254</td>
+<td>10.0.0.0/24</td>
+</tr>
+<tr>
+<td>Pepper</td>
+<td>s2s_pepper2aws</td>
+<td>172.31.255.254</td>
+<td>172.31.255.254/31</td>
+</tr>
+<tr>
+<td>Chaeynz</td>
+<td>eth0</td>
+<td>10.1.0.254</td>
+<td>10.1.0.0/24</td>
+</tr>
+<tr>
+<td>Chaeynz</td>
+<td>s2s_chaeynz2aws</td>
+<td>172.31.255.252</td>
+<td>172.31.255.252/31</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<p><strong>Optimization</strong></p>
+<p>When Sites from the Americas connected to the Hub, the users experienced a significant latency when using resources on the network, since my Hub is located in Stockholm.</p>
+<p>I decided to optimize this, by using inter-region VPC Peering connections.</p>
+<p>When AWS creates a VPC Peering connection, it will use the infrastructure provided by AWS. This is the reason why connections forwarded by this proxy to the VPC Peering connection will be faster, than using the route over the public internet<br>
+It will change the route a device takes to get to its destination<br>
+Instead of sending the traffic through thousands of different routers, which might route your traffic over links which suffer congestion, the traffic will be sent basically &ldquo;next-doors&rdquo; to the EC2 instance, because it is located in America</p>
+<h1 id="8-configuring-wireguard-tunnels-and-routing">8. Configuring WireGuard tunnels and routing<a href="#8-configuring-wireguard-tunnels-and-routing" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>When creating WireGuard tunnels we have to use keypairs for encryption</p>
+<p>I will name the keys in these examples, so that they make sense when you see them<br>
+Private keys will be lowercase and their <strong>corresponding</strong> public key will be upper case</p>
+<p>In assymetric encryption you have to create one keypair for each participant. In our case this means we will have to two keypairs for each S2S connection</p>
+<blockquote>
+<p>If you want to follow my configuration example, don&rsquo;t mind the <em>private keys</em> in the MikroTik configs, since RouterOS will generate them automatically for you</p>
+</blockquote>
+<p>Site &ldquo;AWS&rdquo;:</p>
+<pre tabindex="0"><code>/interface/wireguard/
+add name=s2s_aws2pepper private-key=&#34;aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=&#34; listen-port=51820
+add name=s2s_aws2chaeynz private-key=&#34;ccccccccccccccccccccccccccccccccccccccccccc=&#34; listen-port=51821
+
+/interface/wireguard/peers/
+add interface=s2s_aws2pepper public-key=&#34;BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=&#34; allowed-address=172.31.255.254/32,10.0.0.0/16 endpoint-port=51820 persistent-keepalive=25s
+add interface=s2s_aws2chaeynz public-key=&#34;DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=&#34; allowed-address=172.31.255.252/32,10.1.0.0/16 endpoint-port=51821 persistent-keepalive=25s
+
+/ip/address/
+add interface=s2s_aws2pepper address=172.31.255.255/31
+add interface=s2s_aws2chaeynz address=172.31.255.253/31
+
+/ip/route/
+add dst-address=10.0.0.0/16 gateway=s2s_aws2pepper
+add dst-address=10.1.0.0/16 gateway=s2s_aws2chaeynz
+</code></pre><p>Here we can see that AWS has a private key <code>aaa</code>, which also created a public key <code>AAA</code>. I have to copy this public key and enter it on the Site that connects to AWS on this tunnel, in this case Site &ldquo;Pepper&rdquo;.</p>
+<p>Site &ldquo;Pepper&rdquo;:</p>
+<pre tabindex="0"><code>/interface/wireguard/
+add name=s2s_pepper2aws private-key=&#34;bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb=&#34; listen-port=51820
+
+/interface/wireguard/peers/
+add interface=s2s_pepper2aws public-key=&#34;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=&#34; allowed-address=172.31.255.255/32,10.100.0.0/16,10.1.0.0/16 endpoint-address=elasticip.aws.instance endpoint-port=51820
+
+/ip/address/
+add interface=s2s_pepper2aws address=172.31.255.254/31
+
+/ip/route/
+add dst-address=10.1.0.0/16 gateway=s2s_pepper2aws
+add dst-address=10.100.0.0/16 gateway=s2s_pepper2aws
+</code></pre><p>On Site &ldquo;Pepper&rdquo; you can see the private key <code>bbb</code>. I already added the corresponding <code>BBB</code> public key on AWS, as seen in Site &ldquo;Pepper&rdquo; and the connection will work as expected:</p>
+<p><img src="/images/hub-spoke-wireguard/cli-success1.png" alt=""></p>
+<blockquote>
+<p>Successful handshake between &ldquo;AWS&rdquo; and &ldquo;Pepper&rdquo;</p>
+</blockquote>
+<p>Moving on to the Site &ldquo;Chaeynz&rdquo;, which is my home network. It will use the WireGuard apt package, as beforementioned</p>
+<p>Site &ldquo;Chaeynz&rdquo;:</p>
+<pre tabindex="0"><code># s2s_chaeynz2aws.conf
+[Interface]
+Address = 172.31.255.252/31
+ListenPort = 51821
+PrivateKey = ddddddddddddddddddddddddddddddddddddddddddd=
+
+[Peer]
+PublicKey = CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=
+AllowedIPs = 172.31.255.253/32, 10.0.0.0/16, 10.100.0.0/16
+Endpoint = elasticip.aws.instance:51821
+PersistentKeepalive = 25
+</code></pre><p>The configuration looks a little bit different, but it will not contain any information that is different on MikroTik devices</p>
+<p>The <code>Address</code> directly specifies the IP address that is going to be assigned to the locally created tunnel interface when the WireGuard tunnel is created</p>
+<p>The <code>PrivateKey</code> is <code>ddd</code>, whose corresponding public key <code>DDD</code> we already defined in the config of the AWS instance</p>
+<p><img src="/images/hub-spoke-wireguard/cli-success2.png" alt=""></p>
+<blockquote>
+<p>Successful handshake between “AWS” and &ldquo;Chaeynz”</p>
+</blockquote>
+<p>After configuring this we have set up everything necessary to officially call it a Hub-to-Spoke VPN</p>
+<p><img src="/images/hub-spoke-wireguard/example3.png" alt=""></p>
+<h1 id="9-allowedips-in-wireguard">9. AllowedIPs in WireGuard<a href="#9-allowedips-in-wireguard" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>Let&rsquo;s take a step back here</p>
+<p>I have not yet talked about the AllowedIPs that I am specifying.</p>
+<p>They were a very unique concept to me that I have not yet seen in other VPN protocols and I want to explain in depth how they work, according to the WireGuard Whitepaper.</p>
+<p>You first have to understand, that you need to configure a &ldquo;Peer&rdquo;, in which you enforce a set of Keypairs to be used (using the Public Key you define, that is associated with devices that connect AND the private key you defined in the interface whose associated public key must be known be the devices that connect).<br>
+Finally you will need to configure the IPs that are allowed from those Peers</p>
+<p>I can sum it up in a single sentence: Define the IPs that you expect to send traffic to AND receive traffic from, on the other side of the tunnel.</p>
+<p><strong>Why?</strong></p>
+<p>When you receive incoming traffic ON a tunnel interface FROM a Peer, it must first be DECRYPTED. That is important to remember.</p>
+<p>WireGuard will check after each time when a packet is decrypted, if the source IP is defined in AllowedIPs and will drop the packet if the IP is not specified.</p>
+<h1 id="10-configuring-domain-records-in-route-53-for-geolocation-routing">10. Configuring domain records in Route 53 for Geolocation Routing<a href="#10-configuring-domain-records-in-route-53-for-geolocation-routing" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>In AWS we can register and rent domains in Route 53.</p>
+<p>As the name suggests, it is not merely for creating a domain, but also integrates perfectly for routing traffic dynamically to your AWS resources.</p>
+<p>In the case of EC2 we have to define the target (&ldquo;Value/Route traffic to&rdquo;) as an IP. This should be an <strong><a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/elastic-ip-addresses-eip.html">Elastic IP</a></strong></p>
+<p><img src="/images/hub-spoke-wireguard/aws-r53-records.png" alt=""></p>
+<blockquote>
+<p>Here you can see how DNS requests on my domain will be routed selectively by Geolocation to different IPs.<br>
+Clients from South America and North America will resolve the domain name to <code>100.64.200.1</code>, while clients (Spokes) from Europe will resolve the domain name to <code>100.64.100.1</code></p>
+</blockquote>
+<p><img src="/images/hub-spoke-wireguard/aws-r53-create.png" alt=""></p>
+<p>We can implement Geolocation Routing by selecting the region, where we expect the clients (Spokes) IPs to come from and define the resolved IP address in the record value. Then repeat this process for each location you want to uniquely route</p>
+<p><code>100.64.100.1</code> will be my actual VPN Hub, which is located in Stockholm, while <code>100.64.200.1</code> is the proxy that is located in Argentina, Buenos Aires (us-east-bue-1a)</p>
+<p>Once the domain is set up, we know that our EC2 instance acting as proxy will receive traffic on it&rsquo;s public facing interface.</p>
+<p>The clients (Spokes) will not notice this, since they are using our domain to connect to the central hub and after it is resolved they will just initiate the connection to a different</p>
+<h1 id="11-creating-a-vpc-peering-connection">11. Creating a VPC Peering connection<a href="#11-creating-a-vpc-peering-connection" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p><img src="/images/hub-spoke-wireguard/aws-vpc-peering.png" alt=""></p>
+<p>This is fairly easy. You have to request a VPC Peering connection from one VPC to the other VPC, by specifying the VPC ID</p>
+<p>Notice the &ldquo;Another Region&rdquo; radio button</p>
+<p>From the &ldquo;Accepter&rdquo; VPC, you will have to accept the request and you&rsquo;re done</p>
+<h1 id="12-configuring-the-proxy">12. Configuring the proxy<a href="#12-configuring-the-proxy" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>As proxy software I used ad hoc <code>socat</code>. It perfectly suits the job, since I have to manage two bidirectional bytestreams, from the client (Spoke) to the proxy and from the proxy to the VPN Hub</p>
+<p>This can be achieved in socat by specifying a <em>listener</em> and a <em>fork</em></p>
+<pre tabindex="0"><code>socat UDP4-LISTEN:51820,fork UDP4:10.100.0.254:51820
+</code></pre><p>Socat will now forward incoming UDP traffic on port 51820 to the VPN Server over the VPC Peering connection</p>
+<p>Amazingly enough this decreased the latency of a user based in South America from <code>220ms</code> to <code>120ms</code></p>
+<p>Keep in mind: The Hub is based in Stockholm!</p>
+<h1 id="13-conclusion">13. Conclusion<a href="#13-conclusion" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>WireGuard is a lovely VPN protocol which provides you with enterprise-grade security at exceptional speeds</p>
+<p>About my subnetting decisions I need to mention, that using /31 is definetely not the only way to go and I would not recommend it in every environment, since this might cause troubles</p>
+<p>Specifically with MikroTik I have noticed that their bandwidth-test tool does not work as intended and I had to manually configure routes with preferred source IPs to get the tool bind to a different IP address</p>
+<p>Optimizing the network performance through the use of a VPC Peering connection was an idea that just came to my mind</p>
+<p>I talked with p3nnyW about it, showed it on a DrawIO diagram and we agreed that this will most probably work. After configuring it, I was amazed by the results</p>
+<p>Other than that I found MikroTik very interesting to work with<br>
+MikroTik RouterOS is based on linux and I felt very much at home when using the CLI<br>
+Comparably the use of commands through autocompletion also felt like my experience with Cisco devices</p>
+<p>I would highly recommend checking MikroTik out</p>
+<h1 id="14-glossary">14. Glossary<a href="#14-glossary" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RouterOS</td>
+<td>MikroTik&rsquo;s OS for Routers</td>
+</tr>
+<tr>
+<td>VM</td>
+<td>Virtual Machine</td>
+</tr>
+<tr>
+<td>CHR</td>
+<td>MikroTik Cloud Hosted Router, a version of RouterOS refined for deployments in VMs</td>
+</tr>
+<tr>
+<td>AWS</td>
+<td>Amazon Web Services</td>
+</tr>
+<tr>
+<td>EC2</td>
+<td>Elastic Compute Cloud - AWS service for hosting cloud resources</td>
+</tr>
+<tr>
+<td>VPC</td>
+<td>Virtual Private Cloud - A secure, isolated private cloud hosted within a public cloud, also the exact name for the AWS service to deploy VPCs <del>(which is rare for AWS)</del></td>
+</tr>
+<tr>
+<td>VPC Peering</td>
+<td>Connect two different VPCs without an extra hop</td>
+</tr>
+<tr>
+<td>IGW</td>
+<td>Internet Gateway in an AWS VPC</td>
+</tr>
+<tr>
+<td>Route 53</td>
+<td>DNS service for renting and managing domains on AWS</td>
+</tr>
+<tr>
+<td>SIEM</td>
+<td>Centralized security information and event management</td>
+</tr>
+</tbody>
+</table>
+<h1 id="15-document-history">15. Document History:<a href="#15-document-history" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<table>
+<thead>
+<tr>
+<th>Date</th>
+<th>Version</th>
+<th>Public?</th>
+<th>Comment</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2023-11-07</td>
+<td>v1</td>
+<td>No</td>
+<td></td>
+</tr>
+<tr>
+<td>2023-12-09</td>
+<td>v2</td>
+<td>Yes</td>
+<td>Release</td>
+</tr>
+</tbody>
+</table>
+<h1 id="16-sources">16. Sources:<a href="#16-sources" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<ul>
+<li><a href="https://docs.netgate.com/pfsense/en/latest/recipes/wireguard-s2ms.html">https://docs.netgate.com/pfsense/en/latest/recipes/wireguard-s2ms.html</a></li>
+<li><a href="https://aws.amazon.com/blogs/aws/new-almost-inter-region-vpc-peering/">https://aws.amazon.com/blogs/aws/new-almost-inter-region-vpc-peering/</a></li>
+<li><a href="https://datatracker.ietf.org/doc/html/rfc3021">https://datatracker.ietf.org/doc/html/rfc3021</a></li>
+<li><a href="https://www.wireguard.com/papers/wireguard.pdf">https://www.wireguard.com/papers/wireguard.pdf</a></li>
+<li><a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/elastic-ip-addresses-eip.html">https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/elastic-ip-addresses-eip.html</a></li>
+<li><a href="https://help.mikrotik.com/docs/display/ROS/WireGuard">https://help.mikrotik.com/docs/display/ROS/WireGuard</a></li>
+<li><a href="https://help.mikrotik.com/docs/display/ROS/Basic+Concepts">https://help.mikrotik.com/docs/display/ROS/Basic+Concepts</a></li>
+</ul>
+<h1 id="17-special-thanks">17. Special thanks:<a href="#17-special-thanks" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<blockquote>
+<ul>
+<li>lordkitsuna | grep &lsquo;Feedback &amp; Troubleshooting&rsquo;</li>
+<li>CommanderKronos | grep &lsquo;Feedback&rsquo;</li>
+<li>p3nnyW | grep &lsquo;Feedback&rdquo;</li>
+<li>Keo | grep &lsquo;Feedback&rsquo;</li>
+<li>Tati | grep &lsquo;Mate&rsquo;</li>
+<li>pylee | grep '&rsquo;</li>
+</ul>
+</blockquote>
+<p>@TeamViewer no front btw</p>
+<p>EOF</p>
+
+      </div></div>
+
+  
+    
+<div class="pagination">
+    <div class="pagination__title">
+        <span class="pagination__title-h"></span>
+        <hr />
+    </div>
+    <div class="pagination__buttons">
+        
+        
+        <span class="button next">
+            <a href="/posts/marianas-web/">
+                <span class="button__text">Marianas Web</span>
+                <span class="button__icon">→</span>
+            </a>
+        </span>
+        
+    </div>
+</div>
+
+  
+
+  
+    
+
+  
+</article>
+
+  </div>
+
+  
+    <footer class="footer">
+  <div class="footer__inner">
+    
+      <div class="copyright">
+        <span>© 2023 Powered by <a href="https://gohugo.io">Hugo</a></span>
+    
+      <span>:: <a href="https://github.com/panr/hugo-theme-terminal" target="_blank">Theme</a> made by <a href="https://github.com/panr" target="_blank">panr</a></span>
+      </div>
+  </div>
+</footer>
+
+
+
+
+
+
+<script type="text/javascript" src="/bundle.min.js"></script>
+
+
+
+
+
+  
+</div>
+
+</body>
+</html>
