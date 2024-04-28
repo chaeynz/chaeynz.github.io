@@ -38,6 +38,11 @@
 
 <meta name="twitter:card" content="summary" />
 
+  
+    <meta name="twitter:site" content="" />
+  
+    <meta name="twitter:creator" content="chaeynz" />
+
 
 
 <meta property="og:locale" content="en" />
@@ -79,7 +84,7 @@
     <div class="header__logo">
       <a href="">
   <div class="logo">
-    chaeynz' blog
+    Terminal
   </div>
 </a>
 
@@ -238,7 +243,7 @@ This <em>less secure</em> network is often the internet. We don&rsquo;t trust pe
 <p><strong>VPNs don&rsquo;t need to be complicated</strong></p>
 <p>VPN is just an abstraction, of what happens internally</p>
 <hr>
-<p>After , we know that after it happened, we end up with another network interface, which is a virtual interface that lets us access this <strong>virtual private network</strong></p>
+<p>After the tunneling happened, we know that we end up with another network interface, which is a virtual interface that lets us access this <strong>virtual private network</strong></p>
 <hr>
 <p>You have to understand the different types, operation modes and what makes them unique, but you don&rsquo;t necessarily have to know how IPsec/WireGuard/SSL works internally</p>
 <h1 id="5-how-does-a-hub-and-spoke-vpn-work">5. How does a Hub-and-Spoke VPN work?<a href="#5-how-does-a-hub-and-spoke-vpn-work" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
@@ -289,7 +294,7 @@ Spoke B will then send its response to this traffic to the Hub which forwards th
 <p>I have decided to set up the VPN Hub in AWS, simply for the flexibility the cloud provides and the possibility for close and easy integration with cloud resources</p>
 <p>For this project we decided to use MikroTik RouterOS / CHR, since it is a very affordable product</p>
 <p>The only exception is my Site which is currently running a Debian installation on a Raspberry Pi, where the APT package <em>wireguard</em> was installed</p>
-<p>The advantage of MikroTik RouterOS is, thajust t it includes an almost Enterprise-ready product, with fine-grained control over all things networking, aswell as a decent firewall<br>
+<p>The advantage of MikroTik RouterOS is, that it includes an almost Enterprise-ready product, with fine-grained control over all things networking, as well as a decent firewall<br>
 The only exception for being Enterprise-ready in my opinion is the lack of HA</p>
 <p>Looking back I found the firewall very confusing, but once you dig into it, it will give you fine-grained control over how the state of a connection is accounted for in firewall policies</p>
 <p>It works like iptables, in the way that it has input, output and forward chains.<br>
@@ -630,8 +635,8 @@ Comparably the use of commands through autocompletion also felt like my experien
         
         
         <span class="button next">
-            <a href="/posts/marianas-web/">
-                <span class="button__text">Marianas Web</span>
+            <a href="/posts/full-tunnel-with-mullvad-vpn/">
+                <span class="button__text">Exploring full-tunnel VPN with the Mullvad Client</span>
                 <span class="button__icon">→</span>
             </a>
         </span>
@@ -654,7 +659,7 @@ Comparably the use of commands through autocompletion also felt like my experien
   <div class="footer__inner">
     
       <div class="copyright">
-        <span>© 2023 Powered by <a href="https://gohugo.io">Hugo</a></span>
+        <span>© 2024 Powered by <a href="https://gohugo.io">Hugo</a></span>
     
       <span>:: <a href="https://github.com/panr/hugo-theme-terminal" target="_blank">Theme</a> made by <a href="https://github.com/panr" target="_blank">panr</a></span>
       </div>

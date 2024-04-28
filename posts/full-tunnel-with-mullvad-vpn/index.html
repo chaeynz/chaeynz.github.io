@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+    <title>Exploring full-tunnel VPN with the Mullvad Client :: </title>
+  
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Exploring Policy-based routing with the Mullvad VPN client" />
+<meta name="keywords" content="" />
+
+  <meta name="robots" content="noodp" />
+
+<link rel="canonical" href="/posts/full-tunnel-with-mullvad-vpn/" />
+
+
+
+
+
+
+  
+  
+  
+  
+  
+  <link rel="stylesheet" href="/styles.css">
+
+
+
+
+
+
+
+  <link rel="shortcut icon" href="img/theme-colors/red.png">
+  <link rel="apple-touch-icon" href="img/theme-colors/red.png">
+
+
+
+<meta name="twitter:card" content="summary" />
+
+  
+    <meta name="twitter:site" content="" />
+  
+    <meta name="twitter:creator" content="chaeynz_" />
+
+
+
+<meta property="og:locale" content="en" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Exploring full-tunnel VPN with the Mullvad Client">
+<meta property="og:description" content="Exploring Policy-based routing with the Mullvad VPN client" />
+<meta property="og:url" content="/posts/full-tunnel-with-mullvad-vpn/" />
+<meta property="og:site_name" content="" />
+
+  
+    <meta property="og:image" content="img/favicon/red.png">
+  
+
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="627">
+
+
+  <meta property="article:published_time" content="2023-12-09 00:23:54 &#43;0200 &#43;0200" />
+
+
+
+
+
+
+
+
+
+
+
+
+</head>
+<body class="red">
+
+
+<div class="container center headings--one-size">
+
+  <header class="header">
+  <div class="header__inner">
+    <div class="header__logo">
+      <a href="">
+  <div class="logo">
+    Terminal
+  </div>
+</a>
+
+    </div>
+    
+    
+  </div>
+  
+</header>
+
+
+  <div class="content">
+    
+<article class="post">
+  <h1 class="post-title">
+    <a href="/posts/full-tunnel-with-mullvad-vpn/">Exploring full-tunnel VPN with the Mullvad Client</a>
+  </h1>
+  <div class="post-meta"><time class="post-date">2023-12-09</time><span class="post-author">chaeynz</span></div>
+
+  
+  
+
+
+  
+
+  <div class="post-content"><div>
+        <h1 id="1-table-of-contents">1. Table of Contents<a href="#1-table-of-contents" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<ol>
+<li><a href="#1-table-of-contents">Table of Contents</a></li>
+<li><a href="#2-introduction">Introduction</a></li>
+<li><a href="#3-virtual-tunnel-interface">Virtual Tunnel Interface</a></li>
+<li><a href="#3-policy-based-routing">Policy-based routing</a></li>
+<li><a href="#4-routing-table-with-mullvad">Routing table with Mullvad</a></li>
+<li><a href="#5-routing-the-traffic-correctly">Routing the traffic correctly</a></li>
+<li><a href="#6-conclusion">Conclusion</a></li>
+<li><a href="#7-sources">Sources</a></li>
+</ol>
+<h1 id="2-introduction">2. Introduction<a href="#2-introduction" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>Hey!</p>
+<p>After exploring many different tunneling protocols, I learned how simple they work for an administrator (not IPsec ofc) and how easy it is to set up Site-to-Site connections.</p>
+<p>But what about popular VPN clients, like Mullvad? They use a full-tunnel, so that all your internet connections are sent through the tunnel.</p>
+<p>Let&rsquo;s dive into how a full-tunnel works</p>
+<h1 id="3-virtual-tunnel-interface">3. Virtual Tunnel Interface<a href="#3-virtual-tunnel-interface" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>A virtual tunnel interface (VTI), is, as the name suggests, a virtual interface. It acts as an interface to a software, like the mullvad client, and doesn&rsquo;t let you send traffic directly on a wire.</p>
+<p>This type of network interface will allow us to send traffic into the Mullvad VPN client software, which will then perform it&rsquo;s typical operations, like encrypting and properly sending it to the Mullvad Servers.</p>
+<p>We have a problem here, as after we have this interface, our kernel will not know by itself, that traffic is supposed to go there. And in case we manually add a default route using this interface, it would basically end up in a loop and not know how to reach the Mullvad Servers. But those are supposed to forward our traffic!</p>
+<p>Here I explore the solution that Mullvad found for this..</p>
+<h1 id="4-policy-based-routing">4. Policy-based routing<a href="#4-policy-based-routing" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>The Linux kernel uses policy-based routing to handle routing decisions based on certain criteria beyond traditional destination IP address and subnet masks.</p>
+<p>When activating the Mullvad VPN we are adding another routing table.</p>
+<p>The linux kernel can then be told, to lookup our Mullvad VPN routing table if it matches specific criteria, for instance, a firewall mark.</p>
+<p>&lsquo;fwmark&rsquo; is used to tag packets with a specific identifier within the Linux kernel&rsquo;s networking stack. That means it is only inside of the software that handles networking in linux.
+It DOES NOT modify the traffic that is sent on the wire.</p>
+<h1 id="5-routing-table-with-mullvad">5. Routing Table with Mullvad<a href="#5-routing-table-with-mullvad" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>Our goal is now to make Mullvad work with policy based routing. We already discussed, that it will add a new routing table. Let&rsquo;s look at the changes</p>
+<p><img src="/images/full-tunnel-with-mullvad/routing-table-mullvad.png" alt=""></p>
+<p>We still have to send our packets after encrypting to the Mullvad VPN server, which is why we don&rsquo;t change the default route.</p>
+<p><strong>Default table / default route:</strong></p>
+<pre tabindex="0"><code>default via 10.55.255.254 dev enp5s0 proto dhcp src 10.55.0.12 metric 100
+</code></pre><p>Breaking it down:<br>
+<code>default</code> is an alias for <code>0.0.0.0/0</code><br>
+This is a destination address, so all traffic that matches this destination address, can use this route. In this case it means &ldquo;any&rdquo; destination</p>
+<p><code>via 10.55.255.254</code> means, &ldquo;send your traffic towards this person&rdquo;. In this case this is my home router</p>
+<p><code>dev enp5s0</code> tells the kernel, that we find the gateway on this Ethernet interface</p>
+<p><code>proto dhcp</code> we acquired this route from our DHCP server</p>
+<p><code>src 10.55.0.12</code> our IP on this interface is 10.55.0.12, if we send traffic over this route, <strong>this</strong> is the packets Source IP address</p>
+<p><code>metric 100</code> metric can be used to prefer one route over the other, in case of multiple routes. We only have one in this case.</p>
+<p><strong>Mullvad table / default route:</strong></p>
+<pre tabindex="0"><code>default dev wg-mullvad table 1836018789 proto static
+</code></pre><p>Breaking it down again:<br>
+<code>default</code> = <code>0.0.0.0/0</code></p>
+<p><code>dev wg-mullvad</code> can also be used as &ldquo;Gateway&rdquo;, we just send it out of the interface and hope the other end handles it accordingly</p>
+<p><code>table 1836018789</code> this route is put specifically on this table, the table where we will later tell linux to look into for all internet traffic</p>
+<p><code>proto static</code> this was added statically by a user, or a software, in this case the Mullvad client</p>
+<p>You might be wondering, if we just send it out on the interface, how does it know the MAC address of the gateway?? Which address will it put as destination on the Ethernet frame??</p>
+<p>Well, as WireGuard is encapsulating Layer 3 traffic only, it does not send any ethernet frame in the tunnel.</p>
+<p>We can see this when starting a capture with WireShark, selecting the wg0-mullvad interface.</p>
+<p><img src="/images/full-tunnel-with-mullvad/wireshark-capture.png" alt=""></p>
+<p>There is no Ethernet Frame. The Mullvad VPN Servers will just forward your traffic and forward the reply to you. For our linux kernel it looks like you are directly connected to the internet, like, oh &ldquo;everything is directly connected on this interface, great&rdquo;</p>
+<h1 id="6-routing-the-traffic-correctly">6. Routing the traffic correctly<a href="#6-routing-the-traffic-correctly" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>As expected, our goal is now to tell our linux kernel, to route all traffic over the Mullvad VPN routing table</p>
+<p><img src="/images/full-tunnel-with-mullvad/ip-rules-mullvad.png" alt=""></p>
+<p>We are using IP rules for this.</p>
+<p><code>32764: from all lookup main suppress_prefixlength 0</code><br>
+The first interesting rule is <code>32764</code>, which specifies to lookup the <em>main</em> routing table, but suppress if the applicable route has a prefix length of 0.
+The only route with a prefix length of 0 is the default route</p>
+<p>Therefore all packes that would take the default route will be <em>suppressed</em><br>
+This enables us to send traffic to our local LAN, while still using the Mullvad VPN for the internet. If you remember the screenshot of our routing table, we had one route <code>10.55.0.0/16</code>, which tells the kernel &ldquo;this subnet is directly attached to your interface&rdquo;.</p>
+<p>SoooOo <em>aKsHuAlLy</em> 🤓 <em>iT isN&rsquo;t ReAlLy a fUlL-TuNneL</em> 🤓</p>
+<p>Side-info: This route <code>10.55.0.0/16</code> is also necessary to locate the default gateway, as otherwise it wouldn&rsquo;t know where to find <code>10.55.255.254</code> in the default route.</p>
+<p><code>32765: not from all fwmark 0x6d6f6c65 lookup 1836018789</code><br>
+This will lookup the routing table <code>1836018789</code> for all packets EXCEPT packets marked with 0x6d6f6c65<br>
+0x6d6f6c65 is the mark that the Mullvad Client Software assigns to packets that are destined for the Mullvad VPN server that you are connecting to</p>
+<p>Mullvad always uses this mark.</p>
+<h1 id="7-conclusion">7. Conclusion<a href="#7-conclusion" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>In summary, we are keeping the original routing table, adding a rule to lookup the Mullvad Routing table by default, unless the traffic has a specific fwmark.</p>
+<p>The Mullvad client marks all traffic towards its VPN servers with this mark. That traffic will then be sent over your normal default gateway.</p>
+<p>That way all traffic will enter the virtual tunnel interface, which is then handled by the Mullvad VPN software: Encrypt, append a second IP header, set the headers destination IP to Mullvad VPN Server, put fwmark on it, send out to the Linux kernels network stack again.</p>
+<h1 id="8-sources">8. Sources:<a href="#8-sources" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p><a href="https://ro-che.info/articles/2021-02-27-linux-routing">https://ro-che.info/articles/2021-02-27-linux-routing</a>
+<a href="https://stbuehler.de/blog/article/2020/02/29/using_vrf__virtual_routing_and_forwarding__on_linux.html">https://stbuehler.de/blog/article/2020/02/29/using_vrf__virtual_routing_and_forwarding__on_linux.html</a></p>
+
+      </div></div>
+
+  
+    
+<div class="pagination">
+    <div class="pagination__title">
+        <span class="pagination__title-h"></span>
+        <hr />
+    </div>
+    <div class="pagination__buttons">
+        
+        <span class="button previous">
+            <a href="/posts/hub-spoke-with-wireguard/">
+                <span class="button__icon">←</span>
+                <span class="button__text">Building a Hub and Spoke VPN with WireGuard</span>
+            </a>
+        </span>
+        
+        
+        <span class="button next">
+            <a href="/posts/marianas-web/">
+                <span class="button__text">Marianas Web</span>
+                <span class="button__icon">→</span>
+            </a>
+        </span>
+        
+    </div>
+</div>
+
+  
+
+  
+    
+
+  
+</article>
+
+  </div>
+
+  
+    <footer class="footer">
+  <div class="footer__inner">
+    
+      <div class="copyright">
+        <span>© 2024 Powered by <a href="https://gohugo.io">Hugo</a></span>
+    
+      <span>:: <a href="https://github.com/panr/hugo-theme-terminal" target="_blank">Theme</a> made by <a href="https://github.com/panr" target="_blank">panr</a></span>
+      </div>
+  </div>
+</footer>
+
+
+
+
+
+
+<script type="text/javascript" src="/bundle.min.js"></script>
+
+
+
+
+
+  
+</div>
+
+</body>
+</html>

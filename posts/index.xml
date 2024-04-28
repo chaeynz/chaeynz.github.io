@@ -146,7 +146,7 @@ This &lt;em&gt;less secure&lt;/em&gt; network is often the internet. We don&amp;
 &lt;p&gt;&lt;strong&gt;VPNs don&amp;rsquo;t need to be complicated&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;VPN is just an abstraction, of what happens internally&lt;/p&gt;
 &lt;hr&gt;
-&lt;p&gt;After , we know that after it happened, we end up with another network interface, which is a virtual interface that lets us access this &lt;strong&gt;virtual private network&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;After the tunneling happened, we know that we end up with another network interface, which is a virtual interface that lets us access this &lt;strong&gt;virtual private network&lt;/strong&gt;&lt;/p&gt;
 &lt;hr&gt;
 &lt;p&gt;You have to understand the different types, operation modes and what makes them unique, but you don&amp;rsquo;t necessarily have to know how IPsec/WireGuard/SSL works internally&lt;/p&gt;
 &lt;h1 id=&#34;5-how-does-a-hub-and-spoke-vpn-work&#34;&gt;5. How does a Hub-and-Spoke VPN work?&lt;/h1&gt;
@@ -197,7 +197,7 @@ Spoke B will then send its response to this traffic to the Hub which forwards th
 &lt;p&gt;I have decided to set up the VPN Hub in AWS, simply for the flexibility the cloud provides and the possibility for close and easy integration with cloud resources&lt;/p&gt;
 &lt;p&gt;For this project we decided to use MikroTik RouterOS / CHR, since it is a very affordable product&lt;/p&gt;
 &lt;p&gt;The only exception is my Site which is currently running a Debian installation on a Raspberry Pi, where the APT package &lt;em&gt;wireguard&lt;/em&gt; was installed&lt;/p&gt;
-&lt;p&gt;The advantage of MikroTik RouterOS is, thajust t it includes an almost Enterprise-ready product, with fine-grained control over all things networking, aswell as a decent firewall&lt;br&gt;
+&lt;p&gt;The advantage of MikroTik RouterOS is, that it includes an almost Enterprise-ready product, with fine-grained control over all things networking, as well as a decent firewall&lt;br&gt;
 The only exception for being Enterprise-ready in my opinion is the lack of HA&lt;/p&gt;
 &lt;p&gt;Looking back I found the firewall very confusing, but once you dig into it, it will give you fine-grained control over how the state of a connection is accounted for in firewall policies&lt;/p&gt;
 &lt;p&gt;It works like iptables, in the way that it has input, output and forward chains.&lt;br&gt;
@@ -524,6 +524,93 @@ Comparably the use of commands through autocompletion also felt like my experien
 &lt;/blockquote&gt;
 &lt;p&gt;@TeamViewer no front btw&lt;/p&gt;
 &lt;p&gt;EOF&lt;/p&gt;
+</content>
+    </item>
+    
+    <item>
+      <title>Exploring full-tunnel VPN with the Mullvad Client</title>
+      <link>/posts/full-tunnel-with-mullvad-vpn/</link>
+      <pubDate>Sat, 09 Dec 2023 00:23:54 +0200</pubDate>
+      
+      <guid>/posts/full-tunnel-with-mullvad-vpn/</guid>
+      <description>1. Table of Contents Table of Contents Introduction Virtual Tunnel Interface Policy-based routing Routing table with Mullvad Routing the traffic correctly Conclusion Sources 2. Introduction Hey!
+After exploring many different tunneling protocols, I learned how simple they work for an administrator (not IPsec ofc) and how easy it is to set up Site-to-Site connections.
+But what about popular VPN clients, like Mullvad? They use a full-tunnel, so that all your internet connections are sent through the tunnel.</description>
+      <content>&lt;h1 id=&#34;1-table-of-contents&#34;&gt;1. Table of Contents&lt;/h1&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;a href=&#34;#1-table-of-contents&#34;&gt;Table of Contents&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#2-introduction&#34;&gt;Introduction&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#3-virtual-tunnel-interface&#34;&gt;Virtual Tunnel Interface&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#3-policy-based-routing&#34;&gt;Policy-based routing&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#4-routing-table-with-mullvad&#34;&gt;Routing table with Mullvad&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#5-routing-the-traffic-correctly&#34;&gt;Routing the traffic correctly&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#6-conclusion&#34;&gt;Conclusion&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#7-sources&#34;&gt;Sources&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h1 id=&#34;2-introduction&#34;&gt;2. Introduction&lt;/h1&gt;
+&lt;p&gt;Hey!&lt;/p&gt;
+&lt;p&gt;After exploring many different tunneling protocols, I learned how simple they work for an administrator (not IPsec ofc) and how easy it is to set up Site-to-Site connections.&lt;/p&gt;
+&lt;p&gt;But what about popular VPN clients, like Mullvad? They use a full-tunnel, so that all your internet connections are sent through the tunnel.&lt;/p&gt;
+&lt;p&gt;Let&amp;rsquo;s dive into how a full-tunnel works&lt;/p&gt;
+&lt;h1 id=&#34;3-virtual-tunnel-interface&#34;&gt;3. Virtual Tunnel Interface&lt;/h1&gt;
+&lt;p&gt;A virtual tunnel interface (VTI), is, as the name suggests, a virtual interface. It acts as an interface to a software, like the mullvad client, and doesn&amp;rsquo;t let you send traffic directly on a wire.&lt;/p&gt;
+&lt;p&gt;This type of network interface will allow us to send traffic into the Mullvad VPN client software, which will then perform it&amp;rsquo;s typical operations, like encrypting and properly sending it to the Mullvad Servers.&lt;/p&gt;
+&lt;p&gt;We have a problem here, as after we have this interface, our kernel will not know by itself, that traffic is supposed to go there. And in case we manually add a default route using this interface, it would basically end up in a loop and not know how to reach the Mullvad Servers. But those are supposed to forward our traffic!&lt;/p&gt;
+&lt;p&gt;Here I explore the solution that Mullvad found for this..&lt;/p&gt;
+&lt;h1 id=&#34;4-policy-based-routing&#34;&gt;4. Policy-based routing&lt;/h1&gt;
+&lt;p&gt;The Linux kernel uses policy-based routing to handle routing decisions based on certain criteria beyond traditional destination IP address and subnet masks.&lt;/p&gt;
+&lt;p&gt;When activating the Mullvad VPN we are adding another routing table.&lt;/p&gt;
+&lt;p&gt;The linux kernel can then be told, to lookup our Mullvad VPN routing table if it matches specific criteria, for instance, a firewall mark.&lt;/p&gt;
+&lt;p&gt;&amp;lsquo;fwmark&amp;rsquo; is used to tag packets with a specific identifier within the Linux kernel&amp;rsquo;s networking stack. That means it is only inside of the software that handles networking in linux.
+It DOES NOT modify the traffic that is sent on the wire.&lt;/p&gt;
+&lt;h1 id=&#34;5-routing-table-with-mullvad&#34;&gt;5. Routing Table with Mullvad&lt;/h1&gt;
+&lt;p&gt;Our goal is now to make Mullvad work with policy based routing. We already discussed, that it will add a new routing table. Let&amp;rsquo;s look at the changes&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;/images/full-tunnel-with-mullvad/routing-table-mullvad.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;p&gt;We still have to send our packets after encrypting to the Mullvad VPN server, which is why we don&amp;rsquo;t change the default route.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Default table / default route:&lt;/strong&gt;&lt;/p&gt;
+&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;default via 10.55.255.254 dev enp5s0 proto dhcp src 10.55.0.12 metric 100
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Breaking it down:&lt;br&gt;
+&lt;code&gt;default&lt;/code&gt; is an alias for &lt;code&gt;0.0.0.0/0&lt;/code&gt;&lt;br&gt;
+This is a destination address, so all traffic that matches this destination address, can use this route. In this case it means &amp;ldquo;any&amp;rdquo; destination&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;via 10.55.255.254&lt;/code&gt; means, &amp;ldquo;send your traffic towards this person&amp;rdquo;. In this case this is my home router&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;dev enp5s0&lt;/code&gt; tells the kernel, that we find the gateway on this Ethernet interface&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;proto dhcp&lt;/code&gt; we acquired this route from our DHCP server&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;src 10.55.0.12&lt;/code&gt; our IP on this interface is 10.55.0.12, if we send traffic over this route, &lt;strong&gt;this&lt;/strong&gt; is the packets Source IP address&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;metric 100&lt;/code&gt; metric can be used to prefer one route over the other, in case of multiple routes. We only have one in this case.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Mullvad table / default route:&lt;/strong&gt;&lt;/p&gt;
+&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;default dev wg-mullvad table 1836018789 proto static
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Breaking it down again:&lt;br&gt;
+&lt;code&gt;default&lt;/code&gt; = &lt;code&gt;0.0.0.0/0&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;dev wg-mullvad&lt;/code&gt; can also be used as &amp;ldquo;Gateway&amp;rdquo;, we just send it out of the interface and hope the other end handles it accordingly&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;table 1836018789&lt;/code&gt; this route is put specifically on this table, the table where we will later tell linux to look into for all internet traffic&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;proto static&lt;/code&gt; this was added statically by a user, or a software, in this case the Mullvad client&lt;/p&gt;
+&lt;p&gt;You might be wondering, if we just send it out on the interface, how does it know the MAC address of the gateway?? Which address will it put as destination on the Ethernet frame??&lt;/p&gt;
+&lt;p&gt;Well, as WireGuard is encapsulating Layer 3 traffic only, it does not send any ethernet frame in the tunnel.&lt;/p&gt;
+&lt;p&gt;We can see this when starting a capture with WireShark, selecting the wg0-mullvad interface.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;/images/full-tunnel-with-mullvad/wireshark-capture.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;p&gt;There is no Ethernet Frame. The Mullvad VPN Servers will just forward your traffic and forward the reply to you. For our linux kernel it looks like you are directly connected to the internet, like, oh &amp;ldquo;everything is directly connected on this interface, great&amp;rdquo;&lt;/p&gt;
+&lt;h1 id=&#34;6-routing-the-traffic-correctly&#34;&gt;6. Routing the traffic correctly&lt;/h1&gt;
+&lt;p&gt;As expected, our goal is now to tell our linux kernel, to route all traffic over the Mullvad VPN routing table&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;/images/full-tunnel-with-mullvad/ip-rules-mullvad.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;p&gt;We are using IP rules for this.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;32764: from all lookup main suppress_prefixlength 0&lt;/code&gt;&lt;br&gt;
+The first interesting rule is &lt;code&gt;32764&lt;/code&gt;, which specifies to lookup the &lt;em&gt;main&lt;/em&gt; routing table, but suppress if the applicable route has a prefix length of 0.
+The only route with a prefix length of 0 is the default route&lt;/p&gt;
+&lt;p&gt;Therefore all packes that would take the default route will be &lt;em&gt;suppressed&lt;/em&gt;&lt;br&gt;
+This enables us to send traffic to our local LAN, while still using the Mullvad VPN for the internet. If you remember the screenshot of our routing table, we had one route &lt;code&gt;10.55.0.0/16&lt;/code&gt;, which tells the kernel &amp;ldquo;this subnet is directly attached to your interface&amp;rdquo;.&lt;/p&gt;
+&lt;p&gt;SoooOo &lt;em&gt;aKsHuAlLy&lt;/em&gt; 🤓 &lt;em&gt;iT isN&amp;rsquo;t ReAlLy a fUlL-TuNneL&lt;/em&gt; 🤓&lt;/p&gt;
+&lt;p&gt;Side-info: This route &lt;code&gt;10.55.0.0/16&lt;/code&gt; is also necessary to locate the default gateway, as otherwise it wouldn&amp;rsquo;t know where to find &lt;code&gt;10.55.255.254&lt;/code&gt; in the default route.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;32765: not from all fwmark 0x6d6f6c65 lookup 1836018789&lt;/code&gt;&lt;br&gt;
+This will lookup the routing table &lt;code&gt;1836018789&lt;/code&gt; for all packets EXCEPT packets marked with 0x6d6f6c65&lt;br&gt;
+0x6d6f6c65 is the mark that the Mullvad Client Software assigns to packets that are destined for the Mullvad VPN server that you are connecting to&lt;/p&gt;
+&lt;p&gt;Mullvad always uses this mark.&lt;/p&gt;
+&lt;h1 id=&#34;7-conclusion&#34;&gt;7. Conclusion&lt;/h1&gt;
+&lt;p&gt;In summary, we are keeping the original routing table, adding a rule to lookup the Mullvad Routing table by default, unless the traffic has a specific fwmark.&lt;/p&gt;
+&lt;p&gt;The Mullvad client marks all traffic towards its VPN servers with this mark. That traffic will then be sent over your normal default gateway.&lt;/p&gt;
+&lt;p&gt;That way all traffic will enter the virtual tunnel interface, which is then handled by the Mullvad VPN software: Encrypt, append a second IP header, set the headers destination IP to Mullvad VPN Server, put fwmark on it, send out to the Linux kernels network stack again.&lt;/p&gt;
+&lt;h1 id=&#34;8-sources&#34;&gt;8. Sources:&lt;/h1&gt;
+&lt;p&gt;&lt;a href=&#34;https://ro-che.info/articles/2021-02-27-linux-routing&#34;&gt;https://ro-che.info/articles/2021-02-27-linux-routing&lt;/a&gt;
+&lt;a href=&#34;https://stbuehler.de/blog/article/2020/02/29/using_vrf__virtual_routing_and_forwarding__on_linux.html&#34;&gt;https://stbuehler.de/blog/article/2020/02/29/using_vrf__virtual_routing_and_forwarding__on_linux.html&lt;/a&gt;&lt;/p&gt;
 </content>
     </item>
     
