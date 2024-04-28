@@ -307,7 +307,7 @@ The firewall is stateful, but requires you to create a policy to accept tracked 
 <p>In the middle you can see a Proxy set up in AWS, which is going to be used by Sites from the Americas to connect to the VPN for performance reasons.</p>
 <hr>
 <p><strong>IP Design</strong></p>
-<p>Because I want to isolate each Site-to-Site connection on a network level, I created separate tunnel interfaces and will now define a rather large subnet for use in Point-to-Point connections</p>
+<p>Because I want to isolate each Site-to-Site connection on a network level, I created separate tunnel interfaces and will now define a rather large subnet for use in Point-to-Point connections, utilizing VLSM</p>
 <blockquote>
 <p>Subnet: 172.31.255.0/24</p>
 </blockquote>
@@ -564,6 +564,10 @@ Comparably the use of commands through autocompletion also felt like my experien
 <tr>
 <td>SIEM</td>
 <td>Centralized security information and event management</td>
+</tr>
+<tr>
+<td>VLSM</td>
+<td>Variable Length Subnet Mask</td>
 </tr>
 </tbody>
 </table>
