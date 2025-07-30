@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+    <title>Firewalling with MikroTik :: </title>
+  
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="How I segmented my network and designed the firewall policies" />
+<meta name="keywords" content="" />
+
+  <meta name="robots" content="noodp" />
+
+<link rel="canonical" href="/posts/advanced-firewalling-with-mikrotik/" />
+
+
+
+
+
+
+  
+  
+  
+  
+  
+  <link rel="stylesheet" href="/styles.css">
+
+
+
+
+
+
+
+  <link rel="shortcut icon" href="img/theme-colors/red.png">
+  <link rel="apple-touch-icon" href="img/theme-colors/red.png">
+
+
+
+<meta name="twitter:card" content="summary" />
+
+
+
+<meta property="og:locale" content="en" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Firewalling with MikroTik">
+<meta property="og:description" content="How I segmented my network and designed the firewall policies" />
+<meta property="og:url" content="/posts/advanced-firewalling-with-mikrotik/" />
+<meta property="og:site_name" content="" />
+
+  
+    <meta property="og:image" content="img/favicon/red.png">
+  
+
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="627">
+
+
+  <meta property="article:published_time" content="2024-07-16 00:07:00 &#43;0200 CEST" />
+
+
+
+
+
+
+
+
+
+
+
+
+</head>
+<body class="red">
+
+
+<div class="container center headings--one-size">
+
+  <header class="header">
+  <div class="header__inner">
+    <div class="header__logo">
+      <a href="">
+  <div class="logo">
+    Terminal
+  </div>
+</a>
+
+    </div>
+    
+    
+  </div>
+  
+</header>
+
+
+  <div class="content">
+    
+<article class="post">
+  <h1 class="post-title">
+    <a href="/posts/advanced-firewalling-with-mikrotik/">Firewalling with MikroTik</a>
+  </h1>
+  <div class="post-meta"><time class="post-date">2024-07-16</time><span class="post-author">chaeynz</span></div>
+
+  
+  
+
+
+  
+
+  <div class="post-content"><div>
+        <h1 id="foreword">Foreword<a href="#foreword" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>It&rsquo;s been a while since I talked about my projects on here.
+I started with the network that I showed in my post &ldquo;<a href="/posts/hub-spoke-with-wireguard/">Building a Hub and Spoke VPN with WireGuard</a>&rdquo; when I just came out of an entry level / apprentice position where I worked a lot with Cisco and Fortinet equipment, and it was the first time that I touched anything besides that.</p>
+<p>During the last months I have come in touch with many other vendors (Palo Alto, Extreme Networks, HPE, Aruba and Juniper) and learned about how firewalling works in enterprise environments.</p>
+<p>As I&rsquo;m writing this, my new router arrived this weekend.<br>
+A MikroTik CCR2004-1G-12S+2XS.<br>
+So I took the time to rethink my firewall and found many interesting functionalities that MikroTik offers</p>
+<p>Note that MikroTik firewalls are very versatile and I am definetely not using it to its full capabilities. There are much more advanced ways of handling traffic with MikroTik that I have not yet studied, like <code>/ip/firewall/raw</code> or <code>/ip/firewall/mangle</code>, nor have I ever really used the layer7 feature of MikroTik, or even stuff like jumping to custom chains.</p>
+<p>The goal of this post is to highlight to newbies with MikroTik how you can achieve similar behaviour as you see with more popular firewalls like Palo Alto (Note that this is a brave comparison between two entirely different products: an NGFW and a Router)</p>
+<p>Also you might grab some new ideas on how to design a network.</p>
+<p>Let&rsquo;s get into it.</p>
+<h1 id="where-to-start">Where to start?<a href="#where-to-start" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>Let me first define what I count towards &ldquo;advanced&rdquo; firewalling:</p>
+<ul>
+<li>Use of Zones</li>
+<li>Use of Address Objects</li>
+<li>Strict segmentation of servers</li>
+<li>Network-level segmentation of clients is not too important, preferrably you would find a way to deny intra-vlan traffic through features provided by a vendor (<a href="https://docs.fortinet.com/document/fortiswitch/7.4.4/fortilink-guide/801169/blocking-intra-vlan-traffic">Blocking intra-VLAN traffic - Fortinet</a>), or ACLs.</li>
+</ul>
+<p>When starting to make a new set of firewall policies the basis of that is your network segments and interfaces, overall your network structure from the POV of your firewall.</p>
+<p>For each topic where I get into a specific feature I will explain the structure that I used and naming convention.</p>
+<h1 id="what-does-the-network-look-like">What does the network look like?<a href="#what-does-the-network-look-like" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>Before starting with the firewall, you will need to analyze the network structure and see where you can group similar things together.
+Obviously in my home network I can just define all segments myself, in an existing infrastructure that would look different.</p>
+<p>I created the following structure:</p>
+<p>My Site subnet is a 10.X.0.0/16.</p>
+<p>I made use of /24 supernets to /29 subnets. Each server that I have will get it&rsquo;s own /29 subnet. In a /29 there is room for 4 hosts. So 3 hosts alongside the subnets gateway.</p>
+<p>I did this because I might want to add another server into a subnet, maybe because it requires layer 2 connectivity to another host, maybe just for shits and giggles. I don&rsquo;t know right know, but I have 65535 addresses available anyways and they don&rsquo;t cost a whole lot (nothing). the number 29 also looks pretty.</p>
+<p>On a more serious note, alongside the fact that I might want to add another host into one of the subnets, I want the same CIDR in all subnets. So I decided to make it a little larger in all subnets, rather than trying to plan ahead and have a mix of /30s and /29s. A bonus to this that I noticed that I can use the prefix 29 easily for filtering in scripting. For example <code>:foreach subnet in=[/ip/route/find where dst-address~&quot;/29&quot;] do={/routing/ospf/interface-template add networks=[/ip/route/get $subnet dst-address]}</code></p>
+<p>I can use those supernets in firewall policies for instance, to allow access from all servers to my DNS server.</p>
+<p>I am using small segments to prevent lateral movement on layer 2 networks, as devices on the same VLAN can communicate directly to each other, if no ACLs filter that. By giving each device its own subnet I enforce they need to go over the gateway to reach any other host, which means the firewall policies will be applied to all traffic in my network.</p>
+<h1 id="zones">Zones<a href="#zones" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>A Zone is a list of interfaces that are strictly bound to this zone. A Zone object can be used in a firewall policy as either ingress or egress Zone.
+For example I could have 4 VLAN trunk interfaces that are all part of my Wi-Fi network. I can put these VLAN interfaces into the Zone Wi-Fi and use it in a policy to allow Internet traffic from Wi-Fi to WAN.</p>
+<p>The benefit of Zones is that, if your interfaces should ever change, you don&rsquo;t need to change anything about your firewall policies. Just add the new interfaces to the Zone and everything works as before</p>
+<p>There are no Zones in MikroTik.</p>
+<p>The feature that MikroTik provides is <code>/interface/list</code> and behaves slightly different. It&rsquo;s still a list of interfaces, as the name suggests, but the interfaces have the ability to be in multiple interface list at the same time. Also a nice feature of that is, that you can include an interface list into another interface list.</p>
+<p>I can&rsquo;t actually think of a scenario where I would need that, but it&rsquo;s still cool nonetheless lol.</p>
+<hr>
+<p>I created these interface lists:</p>
+<ul>
+<li>L3_WAN</li>
+<li>L3_VPN</li>
+<li>L3_DMZ</li>
+<li>L3_0_Admin</li>
+<li>L3_1_Server</li>
+<li>L3_80_WIFI</li>
+<li>L3_255_MGMT</li>
+</ul>
+<p>I don&rsquo;t think the first 3 need any explaining.</p>
+<p>The naming convention includes a number at the second separator, which is equal to the value of the 3rd octet in the addresses that you find in this Zone (interface list).</p>
+<p>For example:</p>
+<ul>
+<li>L3_0_Admin = 10.X.0.0/24</li>
+<li>L3_1_Server = 10.X.1.0/24</li>
+<li>L3_80_WIFI = 10.X.80.0/24</li>
+</ul>
+<h1 id="address-objects">Address Objects<a href="#address-objects" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>Address Objects store a network address and can be used in firewall policies instead of just an address.</p>
+<p>Again, that way I can change the underlying address without touching firewall policies.</p>
+<p>In MikroTik there are address-lists instead of address objects combined with address groups, like you would see in a Palo Alto.</p>
+<p>That is fine, as I can just create an address list that only stores one address, and add multiple in case I want to.</p>
+<p>The only thing I&rsquo;m missing here is address-lists to include other address-lists. Sadly this is not implemented.</p>
+<hr>
+<p>I defined address objects like these:</p>
+<ul>
+<li>H_srv-nas01</li>
+<li>H_srv-radius01</li>
+<li>H_deb.debian.org</li>
+<li>N_ChaeynzAdmin</li>
+<li>N_ChaeynzMgmt</li>
+</ul>
+<p>H_ stands for Host<br>
+N_ stands for Network</p>
+<p>MikroTik has a feature that I was not expecting, which is address lists containing DNS names.  The DNS name will automatically be resolved and create a dynamic member of the address list for each IP address the DNS name resolves to. This is extremely useful, as IPs of websites can change a lot. Websites like Google have several different IPs that google.com resolves to, that also change from time to time. I don&rsquo;t want to statically add the IP addresses of those to an address list, nor do I want to script that. Being able to just define a DNS name as value is good.</p>
+<p><img src="/images/advanced-firewalling-with-mikrotik/address-list-dns.png" alt=""></p>
+<p>What can I do with this? Let&rsquo;s get hands on:</p>
+<p>This gives me the possibility to create a policy to allow traffic <strong>FROM</strong> <code>H_srv-nas01</code> (whichever address that may be) <strong>TO</strong> <code>H_deb.debian.org</code> (whichever address that may be)</p>
+<p><img src="/images/advanced-firewalling-with-mikrotik/address-list-policy.png" alt=""></p>
+<h1 id="policies">Policies<a href="#policies" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>A great part of working with larger sets of policies is finding them. To make it quicker readable to the eye I found a naming convention for all firewall policies where I can look at the name and see what it does. At least vaguely.</p>
+<hr>
+<p>I created the following naming convention:</p>
+<ul>
+<li>&lt;<strong>a/d</strong>&gt; | Action | Accept / Drop</li>
+<li>&lt;<strong>n/u</strong>&gt; Source Type | Network / User | (There is no user source in MikroTik FW as it doesnt provide an Identity Firewall, but I want the same naming convention across all Firewalls)</li>
+<li>&lt;<strong>app</strong>&gt; | The Application that is being allowed by this policy | Note that I don&rsquo;t apply the policy to a real application, but rather a tcp/udp + port combination. I used the name of the application I expect anyways, but theoretically any application could say they use tcp/80</li>
+<li>&lt;<strong>src-zone</strong>&gt; | The in-interface-list in shortform</li>
+<li>&lt;<strong>dst-zone</strong>&gt; | The out-interface-list in shortform</li>
+<li>&lt;<strong>target</strong>&gt; | If applicable, the destination host / network</li>
+</ul>
+<p>Each value is separated by a dot.</p>
+<p>For example a policy that allows the admin network HTTP and HTTPS access would look like this:</p>
+<p><img src="/images/advanced-firewalling-with-mikrotik/policy-naming-example.png" alt=""></p>
+<h1 id="closing-remarks">Closing remarks<a href="#closing-remarks" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>I know this was a comparably short post, but hopefully you find it useful.</p>
+<p>Whenever I search for best practices I rarely find what I am looking for, so I tried to create something that I wish I had when getting into firewalling.</p>
+<h1 id="sources">Sources:<a href="#sources" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<ul>
+<li>Trying around</li>
+<li>Asking people for their best practices</li>
+<li><a href="https://help.mikrotik.com/docs/display/ROS/Firewall">https://help.mikrotik.com/docs/display/ROS/Firewall</a></li>
+<li><a href="https://help.mikrotik.com/docs/display/ROS/Building+Advanced+Firewall">https://help.mikrotik.com/docs/display/ROS/Building+Advanced+Firewall</a></li>
+</ul>
+
+      </div></div>
+
+  
+    
+<div class="pagination">
+    <div class="pagination__title">
+        <span class="pagination__title-h"></span>
+        <hr />
+    </div>
+    <div class="pagination__buttons">
+        
+        
+        <span class="button next">
+            <a href="/posts/full-tunnel-with-mullvad-vpn/">
+                <span class="button__text">Exploring full-tunnel VPN with the Mullvad Client</span>
+                <span class="button__icon">→</span>
+            </a>
+        </span>
+        
+    </div>
+</div>
+
+  
+
+  
+    
+
+  
+</article>
+
+  </div>
+
+  
+    <footer class="footer">
+  <div class="footer__inner">
+    
+      <div class="copyright">
+        <span>© 2024 Powered by <a href="https://gohugo.io">Hugo</a></span>
+    
+      <span>:: <a href="https://github.com/panr/hugo-theme-terminal" target="_blank">Theme</a> made by <a href="https://github.com/panr" target="_blank">panr</a></span>
+      </div>
+  </div>
+</footer>
+
+
+
+
+
+
+<script type="text/javascript" src="/bundle.min.js"></script>
+
+
+
+
+
+  
+</div>
+
+</body>
+</html>

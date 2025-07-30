@@ -1,0 +1,828 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Posts on </title>
+    <link>/posts/</link>
+    <description>Recent content in Posts on </description>
+    <generator>Hugo -- gohugo.io</generator>
+    <lastBuildDate>Tue, 16 Jul 2024 00:07:00 +0200</lastBuildDate><atom:link href="/posts/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Firewalling with MikroTik</title>
+      <link>/posts/advanced-firewalling-with-mikrotik/</link>
+      <pubDate>Tue, 16 Jul 2024 00:07:00 +0200</pubDate>
+      
+      <guid>/posts/advanced-firewalling-with-mikrotik/</guid>
+      <description>Foreword It&amp;rsquo;s been a while since I talked about my projects on here. I started with the network that I showed in my post &amp;ldquo;Building a Hub and Spoke VPN with WireGuard&amp;rdquo; when I just came out of an entry level / apprentice position where I worked a lot with Cisco and Fortinet equipment, and it was the first time that I touched anything besides that.
+During the last months I have come in touch with many other vendors (Palo Alto, Extreme Networks, HPE, Aruba and Juniper) and learned about how firewalling works in enterprise environments.</description>
+      <content>&lt;h1 id=&#34;foreword&#34;&gt;Foreword&lt;/h1&gt;
+&lt;p&gt;It&amp;rsquo;s been a while since I talked about my projects on here.
+I started with the network that I showed in my post &amp;ldquo;&lt;a href=&#34;/posts/hub-spoke-with-wireguard/&#34;&gt;Building a Hub and Spoke VPN with WireGuard&lt;/a&gt;&amp;rdquo; when I just came out of an entry level / apprentice position where I worked a lot with Cisco and Fortinet equipment, and it was the first time that I touched anything besides that.&lt;/p&gt;
+&lt;p&gt;During the last months I have come in touch with many other vendors (Palo Alto, Extreme Networks, HPE, Aruba and Juniper) and learned about how firewalling works in enterprise environments.&lt;/p&gt;
+&lt;p&gt;As I&amp;rsquo;m writing this, my new router arrived this weekend.&lt;br&gt;
+A MikroTik CCR2004-1G-12S+2XS.&lt;br&gt;
+So I took the time to rethink my firewall and found many interesting functionalities that MikroTik offers&lt;/p&gt;
+&lt;p&gt;Note that MikroTik firewalls are very versatile and I am definetely not using it to its full capabilities. There are much more advanced ways of handling traffic with MikroTik that I have not yet studied, like &lt;code&gt;/ip/firewall/raw&lt;/code&gt; or &lt;code&gt;/ip/firewall/mangle&lt;/code&gt;, nor have I ever really used the layer7 feature of MikroTik, or even stuff like jumping to custom chains.&lt;/p&gt;
+&lt;p&gt;The goal of this post is to highlight to newbies with MikroTik how you can achieve similar behaviour as you see with more popular firewalls like Palo Alto (Note that this is a brave comparison between two entirely different products: an NGFW and a Router)&lt;/p&gt;
+&lt;p&gt;Also you might grab some new ideas on how to design a network.&lt;/p&gt;
+&lt;p&gt;Let&amp;rsquo;s get into it.&lt;/p&gt;
+&lt;h1 id=&#34;where-to-start&#34;&gt;Where to start?&lt;/h1&gt;
+&lt;p&gt;Let me first define what I count towards &amp;ldquo;advanced&amp;rdquo; firewalling:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Use of Zones&lt;/li&gt;
+&lt;li&gt;Use of Address Objects&lt;/li&gt;
+&lt;li&gt;Strict segmentation of servers&lt;/li&gt;
+&lt;li&gt;Network-level segmentation of clients is not too important, preferrably you would find a way to deny intra-vlan traffic through features provided by a vendor (&lt;a href=&#34;https://docs.fortinet.com/document/fortiswitch/7.4.4/fortilink-guide/801169/blocking-intra-vlan-traffic&#34;&gt;Blocking intra-VLAN traffic - Fortinet&lt;/a&gt;), or ACLs.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;When starting to make a new set of firewall policies the basis of that is your network segments and interfaces, overall your network structure from the POV of your firewall.&lt;/p&gt;
+&lt;p&gt;For each topic where I get into a specific feature I will explain the structure that I used and naming convention.&lt;/p&gt;
+&lt;h1 id=&#34;what-does-the-network-look-like&#34;&gt;What does the network look like?&lt;/h1&gt;
+&lt;p&gt;Before starting with the firewall, you will need to analyze the network structure and see where you can group similar things together.
+Obviously in my home network I can just define all segments myself, in an existing infrastructure that would look different.&lt;/p&gt;
+&lt;p&gt;I created the following structure:&lt;/p&gt;
+&lt;p&gt;My Site subnet is a 10.X.0.0/16.&lt;/p&gt;
+&lt;p&gt;I made use of /24 supernets to /29 subnets. Each server that I have will get it&amp;rsquo;s own /29 subnet. In a /29 there is room for 4 hosts. So 3 hosts alongside the subnets gateway.&lt;/p&gt;
+&lt;p&gt;I did this because I might want to add another server into a subnet, maybe because it requires layer 2 connectivity to another host, maybe just for shits and giggles. I don&amp;rsquo;t know right know, but I have 65535 addresses available anyways and they don&amp;rsquo;t cost a whole lot (nothing). the number 29 also looks pretty.&lt;/p&gt;
+&lt;p&gt;On a more serious note, alongside the fact that I might want to add another host into one of the subnets, I want the same CIDR in all subnets. So I decided to make it a little larger in all subnets, rather than trying to plan ahead and have a mix of /30s and /29s. A bonus to this that I noticed that I can use the prefix 29 easily for filtering in scripting. For example &lt;code&gt;:foreach subnet in=[/ip/route/find where dst-address~&amp;quot;/29&amp;quot;] do={/routing/ospf/interface-template add networks=[/ip/route/get $subnet dst-address]}&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;I can use those supernets in firewall policies for instance, to allow access from all servers to my DNS server.&lt;/p&gt;
+&lt;p&gt;I am using small segments to prevent lateral movement on layer 2 networks, as devices on the same VLAN can communicate directly to each other, if no ACLs filter that. By giving each device its own subnet I enforce they need to go over the gateway to reach any other host, which means the firewall policies will be applied to all traffic in my network.&lt;/p&gt;
+&lt;h1 id=&#34;zones&#34;&gt;Zones&lt;/h1&gt;
+&lt;p&gt;A Zone is a list of interfaces that are strictly bound to this zone. A Zone object can be used in a firewall policy as either ingress or egress Zone.
+For example I could have 4 VLAN trunk interfaces that are all part of my Wi-Fi network. I can put these VLAN interfaces into the Zone Wi-Fi and use it in a policy to allow Internet traffic from Wi-Fi to WAN.&lt;/p&gt;
+&lt;p&gt;The benefit of Zones is that, if your interfaces should ever change, you don&amp;rsquo;t need to change anything about your firewall policies. Just add the new interfaces to the Zone and everything works as before&lt;/p&gt;
+&lt;p&gt;There are no Zones in MikroTik.&lt;/p&gt;
+&lt;p&gt;The feature that MikroTik provides is &lt;code&gt;/interface/list&lt;/code&gt; and behaves slightly different. It&amp;rsquo;s still a list of interfaces, as the name suggests, but the interfaces have the ability to be in multiple interface list at the same time. Also a nice feature of that is, that you can include an interface list into another interface list.&lt;/p&gt;
+&lt;p&gt;I can&amp;rsquo;t actually think of a scenario where I would need that, but it&amp;rsquo;s still cool nonetheless lol.&lt;/p&gt;
+&lt;hr&gt;
+&lt;p&gt;I created these interface lists:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;L3_WAN&lt;/li&gt;
+&lt;li&gt;L3_VPN&lt;/li&gt;
+&lt;li&gt;L3_DMZ&lt;/li&gt;
+&lt;li&gt;L3_0_Admin&lt;/li&gt;
+&lt;li&gt;L3_1_Server&lt;/li&gt;
+&lt;li&gt;L3_80_WIFI&lt;/li&gt;
+&lt;li&gt;L3_255_MGMT&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;I don&amp;rsquo;t think the first 3 need any explaining.&lt;/p&gt;
+&lt;p&gt;The naming convention includes a number at the second separator, which is equal to the value of the 3rd octet in the addresses that you find in this Zone (interface list).&lt;/p&gt;
+&lt;p&gt;For example:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;L3_0_Admin = 10.X.0.0/24&lt;/li&gt;
+&lt;li&gt;L3_1_Server = 10.X.1.0/24&lt;/li&gt;
+&lt;li&gt;L3_80_WIFI = 10.X.80.0/24&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h1 id=&#34;address-objects&#34;&gt;Address Objects&lt;/h1&gt;
+&lt;p&gt;Address Objects store a network address and can be used in firewall policies instead of just an address.&lt;/p&gt;
+&lt;p&gt;Again, that way I can change the underlying address without touching firewall policies.&lt;/p&gt;
+&lt;p&gt;In MikroTik there are address-lists instead of address objects combined with address groups, like you would see in a Palo Alto.&lt;/p&gt;
+&lt;p&gt;That is fine, as I can just create an address list that only stores one address, and add multiple in case I want to.&lt;/p&gt;
+&lt;p&gt;The only thing I&amp;rsquo;m missing here is address-lists to include other address-lists. Sadly this is not implemented.&lt;/p&gt;
+&lt;hr&gt;
+&lt;p&gt;I defined address objects like these:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;H_srv-nas01&lt;/li&gt;
+&lt;li&gt;H_srv-radius01&lt;/li&gt;
+&lt;li&gt;H_deb.debian.org&lt;/li&gt;
+&lt;li&gt;N_ChaeynzAdmin&lt;/li&gt;
+&lt;li&gt;N_ChaeynzMgmt&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;H_ stands for Host&lt;br&gt;
+N_ stands for Network&lt;/p&gt;
+&lt;p&gt;MikroTik has a feature that I was not expecting, which is address lists containing DNS names.  The DNS name will automatically be resolved and create a dynamic member of the address list for each IP address the DNS name resolves to. This is extremely useful, as IPs of websites can change a lot. Websites like Google have several different IPs that google.com resolves to, that also change from time to time. I don&amp;rsquo;t want to statically add the IP addresses of those to an address list, nor do I want to script that. Being able to just define a DNS name as value is good.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;/images/advanced-firewalling-with-mikrotik/address-list-dns.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;p&gt;What can I do with this? Let&amp;rsquo;s get hands on:&lt;/p&gt;
+&lt;p&gt;This gives me the possibility to create a policy to allow traffic &lt;strong&gt;FROM&lt;/strong&gt; &lt;code&gt;H_srv-nas01&lt;/code&gt; (whichever address that may be) &lt;strong&gt;TO&lt;/strong&gt; &lt;code&gt;H_deb.debian.org&lt;/code&gt; (whichever address that may be)&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;/images/advanced-firewalling-with-mikrotik/address-list-policy.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;h1 id=&#34;policies&#34;&gt;Policies&lt;/h1&gt;
+&lt;p&gt;A great part of working with larger sets of policies is finding them. To make it quicker readable to the eye I found a naming convention for all firewall policies where I can look at the name and see what it does. At least vaguely.&lt;/p&gt;
+&lt;hr&gt;
+&lt;p&gt;I created the following naming convention:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&amp;lt;&lt;strong&gt;a/d&lt;/strong&gt;&amp;gt; | Action | Accept / Drop&lt;/li&gt;
+&lt;li&gt;&amp;lt;&lt;strong&gt;n/u&lt;/strong&gt;&amp;gt; Source Type | Network / User | (There is no user source in MikroTik FW as it doesnt provide an Identity Firewall, but I want the same naming convention across all Firewalls)&lt;/li&gt;
+&lt;li&gt;&amp;lt;&lt;strong&gt;app&lt;/strong&gt;&amp;gt; | The Application that is being allowed by this policy | Note that I don&amp;rsquo;t apply the policy to a real application, but rather a tcp/udp + port combination. I used the name of the application I expect anyways, but theoretically any application could say they use tcp/80&lt;/li&gt;
+&lt;li&gt;&amp;lt;&lt;strong&gt;src-zone&lt;/strong&gt;&amp;gt; | The in-interface-list in shortform&lt;/li&gt;
+&lt;li&gt;&amp;lt;&lt;strong&gt;dst-zone&lt;/strong&gt;&amp;gt; | The out-interface-list in shortform&lt;/li&gt;
+&lt;li&gt;&amp;lt;&lt;strong&gt;target&lt;/strong&gt;&amp;gt; | If applicable, the destination host / network&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Each value is separated by a dot.&lt;/p&gt;
+&lt;p&gt;For example a policy that allows the admin network HTTP and HTTPS access would look like this:&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;/images/advanced-firewalling-with-mikrotik/policy-naming-example.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;h1 id=&#34;closing-remarks&#34;&gt;Closing remarks&lt;/h1&gt;
+&lt;p&gt;I know this was a comparably short post, but hopefully you find it useful.&lt;/p&gt;
+&lt;p&gt;Whenever I search for best practices I rarely find what I am looking for, so I tried to create something that I wish I had when getting into firewalling.&lt;/p&gt;
+&lt;h1 id=&#34;sources&#34;&gt;Sources:&lt;/h1&gt;
+&lt;ul&gt;
+&lt;li&gt;Trying around&lt;/li&gt;
+&lt;li&gt;Asking people for their best practices&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://help.mikrotik.com/docs/display/ROS/Firewall&#34;&gt;https://help.mikrotik.com/docs/display/ROS/Firewall&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://help.mikrotik.com/docs/display/ROS/Building+Advanced+Firewall&#34;&gt;https://help.mikrotik.com/docs/display/ROS/Building+Advanced+Firewall&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+</content>
+    </item>
+    
+    <item>
+      <title>Exploring full-tunnel VPN with the Mullvad Client</title>
+      <link>/posts/full-tunnel-with-mullvad-vpn/</link>
+      <pubDate>Sun, 28 Apr 2024 00:13:50 +0200</pubDate>
+      
+      <guid>/posts/full-tunnel-with-mullvad-vpn/</guid>
+      <description>1. Table of Contents Table of Contents Introduction Virtual Tunnel Interface Policy-based routing Routing table with Mullvad Routing the traffic correctly Conclusion Sources 2. Introduction Hey!
+After exploring many different tunneling protocols, I learned how simple they work for an administrator (not IPsec ofc) and how easy it is to set up Site-to-Site connections.
+But what about popular VPN clients, like Mullvad? They use a full-tunnel, so that all your internet connections are sent through the tunnel.</description>
+      <content>&lt;h1 id=&#34;1-table-of-contents&#34;&gt;1. Table of Contents&lt;/h1&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;a href=&#34;#1-table-of-contents&#34;&gt;Table of Contents&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#2-introduction&#34;&gt;Introduction&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#3-virtual-tunnel-interface&#34;&gt;Virtual Tunnel Interface&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#3-policy-based-routing&#34;&gt;Policy-based routing&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#4-routing-table-with-mullvad&#34;&gt;Routing table with Mullvad&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#5-routing-the-traffic-correctly&#34;&gt;Routing the traffic correctly&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#6-conclusion&#34;&gt;Conclusion&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#7-sources&#34;&gt;Sources&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h1 id=&#34;2-introduction&#34;&gt;2. Introduction&lt;/h1&gt;
+&lt;p&gt;Hey!&lt;/p&gt;
+&lt;p&gt;After exploring many different tunneling protocols, I learned how simple they work for an administrator (not IPsec ofc) and how easy it is to set up Site-to-Site connections.&lt;/p&gt;
+&lt;p&gt;But what about popular VPN clients, like Mullvad? They use a full-tunnel, so that all your internet connections are sent through the tunnel.&lt;/p&gt;
+&lt;p&gt;Let&amp;rsquo;s dive into how a full-tunnel works&lt;/p&gt;
+&lt;h1 id=&#34;3-virtual-tunnel-interface&#34;&gt;3. Virtual Tunnel Interface&lt;/h1&gt;
+&lt;p&gt;A virtual tunnel interface (VTI), is, as the name suggests, a virtual interface. It acts as an interface to a software, like the mullvad client, and doesn&amp;rsquo;t let you send traffic directly on a wire.&lt;/p&gt;
+&lt;p&gt;This type of network interface will allow us to send traffic into the Mullvad VPN client software, which will then perform it&amp;rsquo;s typical operations, like encrypting and properly sending it to the Mullvad Servers.&lt;/p&gt;
+&lt;p&gt;We have a problem here, as after we have this interface, our kernel will not know by itself, that traffic is supposed to go there. And in case we manually add a default route using this interface, it would basically end up in a loop and not know how to reach the Mullvad Servers. But those are supposed to forward our traffic!&lt;/p&gt;
+&lt;p&gt;Here I explore the solution that Mullvad found for this..&lt;/p&gt;
+&lt;h1 id=&#34;4-policy-based-routing&#34;&gt;4. Policy-based routing&lt;/h1&gt;
+&lt;p&gt;The Linux kernel uses policy-based routing to handle routing decisions based on certain criteria beyond traditional destination IP address and subnet masks.&lt;/p&gt;
+&lt;p&gt;When activating the Mullvad VPN we are adding another routing table.&lt;/p&gt;
+&lt;p&gt;The linux kernel can then be told, to lookup our Mullvad VPN routing table if it matches specific criteria, for instance, a firewall mark.&lt;/p&gt;
+&lt;p&gt;&amp;lsquo;fwmark&amp;rsquo; is used to tag packets with a specific identifier within the Linux kernel&amp;rsquo;s networking stack. That means it is only inside of the software that handles networking in linux.
+It DOES NOT modify the traffic that is sent on the wire.&lt;/p&gt;
+&lt;h1 id=&#34;5-routing-table-with-mullvad&#34;&gt;5. Routing Table with Mullvad&lt;/h1&gt;
+&lt;p&gt;Our goal is now to make Mullvad work with policy based routing. We already discussed, that it will add a new routing table. Let&amp;rsquo;s look at the changes&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;/images/full-tunnel-with-mullvad/routing-table-mullvad.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;p&gt;We still have to send our packets after encrypting to the Mullvad VPN server, which is why we don&amp;rsquo;t change the default route.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Default table / default route:&lt;/strong&gt;&lt;/p&gt;
+&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;default via 10.55.255.254 dev enp5s0 proto dhcp src 10.55.0.12 metric 100
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Breaking it down:&lt;br&gt;
+&lt;code&gt;default&lt;/code&gt; is an alias for &lt;code&gt;0.0.0.0/0&lt;/code&gt;&lt;br&gt;
+This is a destination address, so all traffic that matches this destination address, can use this route. In this case it means &amp;ldquo;any&amp;rdquo; destination&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;via 10.55.255.254&lt;/code&gt; means, &amp;ldquo;send your traffic towards this person&amp;rdquo;. In this case this is my home router&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;dev enp5s0&lt;/code&gt; tells the kernel, that we find the gateway on this Ethernet interface&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;proto dhcp&lt;/code&gt; we acquired this route from our DHCP server&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;src 10.55.0.12&lt;/code&gt; our IP on this interface is 10.55.0.12, if we send traffic over this route, &lt;strong&gt;this&lt;/strong&gt; is the packets Source IP address&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;metric 100&lt;/code&gt; metric can be used to prefer one route over the other, in case of multiple routes. We only have one in this case.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Mullvad table / default route:&lt;/strong&gt;&lt;/p&gt;
+&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;default dev wg-mullvad table 1836018789 proto static
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Breaking it down again:&lt;br&gt;
+&lt;code&gt;default&lt;/code&gt; = &lt;code&gt;0.0.0.0/0&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;dev wg-mullvad&lt;/code&gt; can also be used as &amp;ldquo;Gateway&amp;rdquo;, we just send it out of the interface and hope the other end handles it accordingly&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;table 1836018789&lt;/code&gt; this route is put specifically on this table, the table where we will later tell linux to look into for all internet traffic&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;proto static&lt;/code&gt; this was added statically by a user, or a software, in this case the Mullvad client&lt;/p&gt;
+&lt;p&gt;You might be wondering, if we just send it out on the interface, how does it know the MAC address of the gateway?? Which address will it put as destination on the Ethernet frame??&lt;/p&gt;
+&lt;p&gt;Well, as WireGuard is encapsulating Layer 3 traffic only, it does not send any ethernet frame in the tunnel.&lt;/p&gt;
+&lt;p&gt;We can see this when starting a capture with WireShark, selecting the wg0-mullvad interface.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;/images/full-tunnel-with-mullvad/wireshark-capture.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;p&gt;There is no Ethernet Frame. The Mullvad VPN Servers will just forward your traffic and forward the reply to you. For our linux kernel it looks like you are directly connected to the internet, like, oh &amp;ldquo;everything is directly connected on this interface, great&amp;rdquo;&lt;/p&gt;
+&lt;h1 id=&#34;6-routing-the-traffic-correctly&#34;&gt;6. Routing the traffic correctly&lt;/h1&gt;
+&lt;p&gt;As expected, our goal is now to tell our linux kernel, to route all traffic over the Mullvad VPN routing table&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;/images/full-tunnel-with-mullvad/ip-rules-mullvad.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;p&gt;We are using IP rules for this.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;32764: from all lookup main suppress_prefixlength 0&lt;/code&gt;&lt;br&gt;
+The first interesting rule is &lt;code&gt;32764&lt;/code&gt;, which specifies to lookup the &lt;em&gt;main&lt;/em&gt; routing table, but suppress if the applicable route has a prefix length of 0.
+The only route with a prefix length of 0 is the default route&lt;/p&gt;
+&lt;p&gt;Therefore all packes that would take the default route will be &lt;em&gt;suppressed&lt;/em&gt;&lt;br&gt;
+This enables us to send traffic to our local LAN, while still using the Mullvad VPN for the internet. If you remember the screenshot of our routing table, we had one route &lt;code&gt;10.55.0.0/16&lt;/code&gt;, which tells the kernel &amp;ldquo;this subnet is directly attached to your interface&amp;rdquo;.&lt;/p&gt;
+&lt;p&gt;SoooOo &lt;em&gt;aKsHuAlLy&lt;/em&gt; 🤓 &lt;em&gt;iT isN&amp;rsquo;t ReAlLy a fUlL-TuNneL&lt;/em&gt; 🤓&lt;/p&gt;
+&lt;p&gt;Side-info: This route &lt;code&gt;10.55.0.0/16&lt;/code&gt; is also necessary to locate the default gateway, as otherwise it wouldn&amp;rsquo;t know where to find &lt;code&gt;10.55.255.254&lt;/code&gt; in the default route.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;32765: not from all fwmark 0x6d6f6c65 lookup 1836018789&lt;/code&gt;&lt;br&gt;
+This will lookup the routing table &lt;code&gt;1836018789&lt;/code&gt; for all packets EXCEPT packets marked with 0x6d6f6c65&lt;br&gt;
+0x6d6f6c65 is the mark that the Mullvad Client Software assigns to packets that are destined for the Mullvad VPN server that you are connecting to&lt;/p&gt;
+&lt;p&gt;Mullvad always uses this mark.&lt;/p&gt;
+&lt;h1 id=&#34;7-conclusion&#34;&gt;7. Conclusion&lt;/h1&gt;
+&lt;p&gt;In summary, we are keeping the original routing table, adding a rule to lookup the Mullvad Routing table by default, unless the traffic has a specific fwmark.&lt;/p&gt;
+&lt;p&gt;The Mullvad client marks all traffic towards its VPN servers with this mark. That traffic will then be sent over your normal default gateway.&lt;/p&gt;
+&lt;p&gt;That way all traffic will enter the virtual tunnel interface, which is then handled by the Mullvad VPN software: Encrypt, append a second IP header, set the headers destination IP to Mullvad VPN Server, put fwmark on it, send out to the Linux kernels network stack again.&lt;/p&gt;
+&lt;h1 id=&#34;8-sources&#34;&gt;8. Sources:&lt;/h1&gt;
+&lt;p&gt;&lt;a href=&#34;https://ro-che.info/articles/2021-02-27-linux-routing&#34;&gt;https://ro-che.info/articles/2021-02-27-linux-routing&lt;/a&gt;
+&lt;a href=&#34;https://stbuehler.de/blog/article/2020/02/29/using_vrf__virtual_routing_and_forwarding__on_linux.html&#34;&gt;https://stbuehler.de/blog/article/2020/02/29/using_vrf__virtual_routing_and_forwarding__on_linux.html&lt;/a&gt;&lt;/p&gt;
+</content>
+    </item>
+    
+    <item>
+      <title>Building a Hub and Spoke VPN with WireGuard</title>
+      <link>/posts/hub-spoke-with-wireguard/</link>
+      <pubDate>Tue, 12 Dec 2023 00:21:47 +0200</pubDate>
+      
+      <guid>/posts/hub-spoke-with-wireguard/</guid>
+      <description>&amp;ldquo;If you don&amp;rsquo;t use a s2s tunnel between on-prem and cloud, are you really a netsec engineer?&amp;rdquo;
+CommanderKronos 1. Table of Contents Table of Contents Introduction VPN intro for dummies What is a VPN? How does a Hub-and-Spoke VPN work? Tech Stack Network Design Configuring WireGuard tunnels and routing AllowedIPs in WireGuard Configuring domain records in Route 53 for Geolocation Routing Creating a VPC Peering Connection Configuring the Proxy Conclusion Glossary Document History Sources Special thanks 2.</description>
+      <content>&lt;blockquote&gt;
+&lt;p&gt;&amp;ldquo;If you don&amp;rsquo;t use a s2s tunnel between on-prem and cloud, are you really a netsec engineer?&amp;rdquo;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;CommanderKronos&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/blockquote&gt;
+&lt;h1 id=&#34;1-table-of-contents&#34;&gt;1. Table of Contents&lt;/h1&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;a href=&#34;#1-table-of-contents&#34;&gt;Table of Contents&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#2-introduction&#34;&gt;Introduction&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#3-vpn-intro-for-dummies&#34;&gt;VPN intro for dummies&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#4-what-is-a-vpn&#34;&gt;What is a VPN?&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#5-how-does-a-hub-and-spoke-vpn-work&#34;&gt;How does a Hub-and-Spoke VPN work?&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#6-tech-stack&#34;&gt;Tech Stack&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#7-network-design&#34;&gt;Network Design&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#8-configuring-wireguard-tunnels-and-routing&#34;&gt;Configuring WireGuard tunnels and routing&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#9-allowedips-in-wireguard&#34;&gt;AllowedIPs in WireGuard&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#10-configuring-domain-records-in-route-53-for-geolocation-routing&#34;&gt;Configuring domain records in Route 53 for Geolocation Routing&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#11-creating-a-vpc-peering-connection&#34;&gt;Creating a VPC Peering Connection&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#12-configuring-the-proxy&#34;&gt;Configuring the Proxy&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#13-conclusion&#34;&gt;Conclusion&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#14-glossary&#34;&gt;Glossary&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#15-document-history&#34;&gt;Document History&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#16-sources&#34;&gt;Sources&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#17-special-thanks&#34;&gt;Special thanks&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h1 id=&#34;2-introduction&#34;&gt;2. Introduction&lt;/h1&gt;
+&lt;p&gt;My father has a company, which has a small datacenter&lt;br&gt;
+In this datacenter there is a vSphere HCI Cluster&lt;/p&gt;
+&lt;p&gt;For a long time we were using a jumphost to control machines in this vSphere environment, since my Dad is not focused on networking&lt;br&gt;
+I dislike this. TeamViewer is okay if you quickly need to help your grandma, but not as a permanent solution&lt;br&gt;
+Therefore I decided that we are going to build a VPN and connect directly with the network of our datacenter instead&lt;/p&gt;
+&lt;p&gt;This has several advantages:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Speed
+&lt;ul&gt;
+&lt;li&gt;No need to use RDP nested inside of a TeamViewer session&lt;/li&gt;
+&lt;li&gt;Ability to route over AWS infrastructure through use of AWS VPC-Peering&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;Flexibility
+&lt;ul&gt;
+&lt;li&gt;Able to integrate cloud infrastructure with datacenter infrastructure&lt;/li&gt;
+&lt;li&gt;Communication over any protocol, instead of just a Remote Desktop connection&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;Security
+&lt;ul&gt;
+&lt;li&gt;Send traffic to and from cloud resources over encrypted tunnel i.e. Syslog or Netflow to SIEM&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;The idea quickly became reality and now I&amp;rsquo;m routing between several sites all around the globe with my own little AWS instance&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;/images/hub-spoke-wireguard/disconnected-sites-visualization.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;p&gt;During this article I will elaborate on my journey how I got this Hub-and-spoke VPN running&lt;/p&gt;
+&lt;p&gt;Specifically I will explain my design choices and technical implementation of the following:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Network design&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;WireGuard VPN configuration&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Geolocation routing with AWS Route 53&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Proxying VPN connection over VPC Peering connection&lt;/strong&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/blockquote&gt;
+&lt;h1 id=&#34;3-vpn-intro-for-dummies&#34;&gt;3. VPN intro for dummies&lt;/h1&gt;
+&lt;p&gt;Before I go into further detail on my specific setup, I want to provide an explanation of some VPN concepts, for readers that might not be familiar&lt;/p&gt;
+&lt;p&gt;Using a VPN doesn&amp;rsquo;t mean, that I installed NordVPN and selected a country&lt;/p&gt;
+&lt;p&gt;This extremely popular usecase of VPNs is technically just a very small niche in a broad spectrum of possibilities&lt;/p&gt;
+&lt;hr&gt;
+&lt;p&gt;The specific type of VPN that is used with Service Providers like NordVPN is a full-tunnel Client-to-Site VPN&lt;/p&gt;
+&lt;p&gt;That means I am tunneling &lt;em&gt;&lt;strong&gt;all&lt;/strong&gt;&lt;/em&gt; my traffic destined for the internet &lt;em&gt;&lt;strong&gt;to&lt;/strong&gt;&lt;/em&gt; the VPN Server hosted by NordVPN&lt;/p&gt;
+&lt;p&gt;The VPN Server will then forward the traffic to the internet for me, which is why the receiver of this traffic will see that the traffic is originating from a public IP which is owned by NordVPN&lt;/p&gt;
+&lt;p&gt;This is a basic concept that is used by all VPN Service Providers like MullvadVPN, ProtonVPN, NordVPN, AirVPN, ExpressVPN, CyberGhost VPN and more&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;But there is much more!&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Here is a list possible VPN scenarios:&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Operation mode&lt;/th&gt;
+&lt;th&gt;Description&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;full-tunnel&lt;/td&gt;
+&lt;td&gt;ALL traffic that your client generates will be sent over the tunnel&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;split-tunnel&lt;/td&gt;
+&lt;td&gt;Choose the networks you want to access through the VPN. Will selectively route traffic with matching destination IP addresses over the tunnel&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Configuration&lt;/th&gt;
+&lt;th&gt;Abbreviation&lt;/th&gt;
+&lt;th&gt;Description&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Client-to-Client&lt;/td&gt;
+&lt;td&gt;C2C&lt;/td&gt;
+&lt;td&gt;One client connects to one client, without any of both forwarding traffic, while forming a virtual network&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Client-to-Site&lt;/td&gt;
+&lt;td&gt;C2S&lt;/td&gt;
+&lt;td&gt;The Site will forward traffic to other clients on its network&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Site-to-Site&lt;/td&gt;
+&lt;td&gt;S2S&lt;/td&gt;
+&lt;td&gt;Both networks &amp;ldquo;merge&amp;rdquo; with each other into one large network, because both have forwarding active&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Site-to-Multisite&lt;/td&gt;
+&lt;td&gt;S2MS&lt;/td&gt;
+&lt;td&gt;A Site connects to a VPN Server which forwards the traffic to several other Sites in a large network \ &lt;del&gt;I dont respect a difference to Site-to-Site&lt;/del&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;hr&gt;
+&lt;h1 id=&#34;4-what-is-a-vpn&#34;&gt;4. What is a VPN?&lt;/h1&gt;
+&lt;p&gt;A VPN, in its original form, is a concept to create a &lt;em&gt;virtual network&lt;/em&gt;, over a &lt;em&gt;less secure&lt;/em&gt; network&lt;br&gt;
+This &lt;em&gt;less secure&lt;/em&gt; network is often the internet. We don&amp;rsquo;t trust people there!&lt;/p&gt;
+&lt;p&gt;We use VPN protocols to encapsulate the original IP packet inside of another IP packet, which is meant for the VPN Server. This is known as tunneling&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;VPNs don&amp;rsquo;t need to be complicated&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;VPN is just an abstraction, of what happens internally&lt;/p&gt;
+&lt;hr&gt;
+&lt;p&gt;After the tunneling happened, we know that we end up with another network interface, which is a virtual interface that lets us access this &lt;strong&gt;virtual private network&lt;/strong&gt;&lt;/p&gt;
+&lt;hr&gt;
+&lt;p&gt;You have to understand the different types, operation modes and what makes them unique, but you don&amp;rsquo;t necessarily have to know how IPsec/WireGuard/SSL works internally&lt;/p&gt;
+&lt;h1 id=&#34;5-how-does-a-hub-and-spoke-vpn-work&#34;&gt;5. How does a Hub-and-Spoke VPN work?&lt;/h1&gt;
+&lt;p&gt;I think that building a Hub-and-spoke VPN makes you understand, how a VPN protocol really works&lt;/p&gt;
+&lt;p&gt;A Hub-and-Spoke VPN is a VPN topology, where a single device &lt;strong&gt;(Hub)&lt;/strong&gt; acts as a router between multiple devices &lt;strong&gt;(Spokes)&lt;/strong&gt; that connect to it&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;/images/hub-spoke-wireguard/example1.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;p&gt;This means, that Spoke A, will be able to access Spoke B, while sending it&amp;rsquo;s traffic to the Hub, which forwards this to Spoke B&lt;br&gt;
+Spoke B will then send its response to this traffic to the Hub which forwards the response to Spoke A&lt;/p&gt;
+&lt;h1 id=&#34;6-tech-stack&#34;&gt;6. Tech Stack&lt;/h1&gt;
+&lt;hr&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Site&lt;/th&gt;
+&lt;th&gt;VPN Device - Hardware&lt;/th&gt;
+&lt;th&gt;VPN Device - OS&lt;/th&gt;
+&lt;th&gt;VPN Software&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;AWS&lt;/td&gt;
+&lt;td&gt;EC2 Instance t3.micro&lt;/td&gt;
+&lt;td&gt;&lt;a href=&#34;https://aws.amazon.com/marketplace/pp/prodview-sf5gn6js6av54&#34;&gt;MikroTik CHR&lt;/a&gt;&lt;/td&gt;
+&lt;td&gt;MikroTik&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Pepper&lt;/td&gt;
+&lt;td&gt;VM&lt;/td&gt;
+&lt;td&gt;MikroTik CHR&lt;/td&gt;
+&lt;td&gt;MikroTik&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Chaeynz&lt;/td&gt;
+&lt;td&gt;Raspberry Pi 3B+&lt;/td&gt;
+&lt;td&gt;Debian 11&lt;/td&gt;
+&lt;td&gt;APT Package&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;blockquote&gt;
+&lt;p&gt;Specification of VPN Software&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;MikroTik has it&amp;rsquo;s own proprietary implementation of the WireGuard protocol, in contrast to the APT package, which uses the official implementation&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;Since I have never worked with MikroTik I had a very nice learning curve during this project&lt;/p&gt;
+&lt;p&gt;I have decided to set up the VPN Hub in AWS, simply for the flexibility the cloud provides and the possibility for close and easy integration with cloud resources&lt;/p&gt;
+&lt;p&gt;For this project we decided to use MikroTik RouterOS / CHR, since it is a very affordable product&lt;/p&gt;
+&lt;p&gt;The only exception is my Site which is currently running a Debian installation on a Raspberry Pi, where the APT package &lt;em&gt;wireguard&lt;/em&gt; was installed&lt;/p&gt;
+&lt;p&gt;The advantage of MikroTik RouterOS is, that it includes an almost Enterprise-ready product, with fine-grained control over all things networking, as well as a decent firewall&lt;br&gt;
+The only exception for being Enterprise-ready in my opinion is the lack of HA&lt;/p&gt;
+&lt;p&gt;Looking back I found the firewall very confusing, but once you dig into it, it will give you fine-grained control over how the state of a connection is accounted for in firewall policies&lt;/p&gt;
+&lt;p&gt;It works like iptables, in the way that it has input, output and forward chains.&lt;br&gt;
+The firewall is stateful, but requires you to create a policy to accept tracked connections&lt;/p&gt;
+&lt;p&gt;The VPN protocol being used is solely WireGuard&lt;/p&gt;
+&lt;p&gt;WireGuard is the fastest VPN protocol compared to the most popular ones IPsec and SSL&lt;/p&gt;
+&lt;p&gt;Since every Spoke supports WireGuard, we decided to use it everywhere&lt;/p&gt;
+&lt;hr&gt;
+&lt;h1 id=&#34;7-network-design&#34;&gt;7. Network design&lt;/h1&gt;
+&lt;p&gt;Setting up my VPN network was a very interesting journey and it included several different technology concepts&lt;/p&gt;
+&lt;p&gt;Let&amp;rsquo;s go through my setup step by step&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;/images/hub-spoke-wireguard/network-design-global.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;p&gt;The Gateways are the devices which are going to be responsible for routing the requests to the network on each Site.&lt;/p&gt;
+&lt;p&gt;Each of the Sites form a Site-to-Site VPN connection to a central VPN hub which is my EC2 instance located in AWS.&lt;/p&gt;
+&lt;p&gt;In the middle you can see a Proxy set up in AWS, which is going to be used by Sites from the Americas to connect to the VPN for performance reasons.&lt;/p&gt;
+&lt;hr&gt;
+&lt;p&gt;&lt;strong&gt;IP Design&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Because I want to isolate each Site-to-Site connection on a network level, I created separate tunnel interfaces and will now define a rather large subnet for use in Point-to-Point connections, utilizing VLSM&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;Subnet: 172.31.255.0/24&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;This /24 subnet will then be further subnetted into /31 subnets that I use as Point-to-Point connections&lt;/p&gt;
+&lt;p&gt;The /31 subnet mask has been defined in RFC 3021 for use in Point-to-Point connections.&lt;br&gt;
+Since this saves 50% of my IP address space and honestly just sounds exciting to me, I will use them&lt;/p&gt;
+&lt;p&gt;I like starting to count from the highest address, so this is how the first connection looks like:&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;/images/hub-spoke-wireguard/example2.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Site&lt;/th&gt;
+&lt;th&gt;Interface&lt;/th&gt;
+&lt;th&gt;IP&lt;/th&gt;
+&lt;th&gt;Mask&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;AWS&lt;/td&gt;
+&lt;td&gt;s2s_aws2pepper&lt;/td&gt;
+&lt;td&gt;172.31.255.255&lt;/td&gt;
+&lt;td&gt;/31&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Pepper&lt;/td&gt;
+&lt;td&gt;s2s_pepper2aws&lt;/td&gt;
+&lt;td&gt;172.31.255.254&lt;/td&gt;
+&lt;td&gt;/31&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;The Hub will always be assigned the higher address in each /31 Subnet, while the &amp;ldquo;connecting&amp;rdquo; Site, so the Spoke, will use the lower address respectively&lt;/p&gt;
+&lt;hr&gt;
+&lt;p&gt;&lt;strong&gt;Overview&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Let me expand this table so that you have a good overview over the entire portion of my network relevant for this post.&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Gateway/Site&lt;/th&gt;
+&lt;th&gt;Interface&lt;/th&gt;
+&lt;th&gt;IP&lt;/th&gt;
+&lt;th&gt;Subnet&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;AWS&lt;/td&gt;
+&lt;td&gt;ether1&lt;/td&gt;
+&lt;td&gt;10.100.0.254&lt;/td&gt;
+&lt;td&gt;10.100.0.0/24&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;AWS&lt;/td&gt;
+&lt;td&gt;s2s_aws2pepper&lt;/td&gt;
+&lt;td&gt;172.31.255.255&lt;/td&gt;
+&lt;td&gt;172.31.255.254/31&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;AWS&lt;/td&gt;
+&lt;td&gt;s2s_aws2chaeynz&lt;/td&gt;
+&lt;td&gt;172.31.255.253&lt;/td&gt;
+&lt;td&gt;172.31.255.252/31&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Pepper&lt;/td&gt;
+&lt;td&gt;ether1&lt;/td&gt;
+&lt;td&gt;10.0.0.254&lt;/td&gt;
+&lt;td&gt;10.0.0.0/24&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Pepper&lt;/td&gt;
+&lt;td&gt;s2s_pepper2aws&lt;/td&gt;
+&lt;td&gt;172.31.255.254&lt;/td&gt;
+&lt;td&gt;172.31.255.254/31&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Chaeynz&lt;/td&gt;
+&lt;td&gt;eth0&lt;/td&gt;
+&lt;td&gt;10.1.0.254&lt;/td&gt;
+&lt;td&gt;10.1.0.0/24&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Chaeynz&lt;/td&gt;
+&lt;td&gt;s2s_chaeynz2aws&lt;/td&gt;
+&lt;td&gt;172.31.255.252&lt;/td&gt;
+&lt;td&gt;172.31.255.252/31&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;hr&gt;
+&lt;p&gt;&lt;strong&gt;Optimization&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;When Sites from the Americas connected to the Hub, the users experienced a significant latency when using resources on the network, since my Hub is located in Stockholm.&lt;/p&gt;
+&lt;p&gt;I decided to optimize this, by using inter-region VPC Peering connections.&lt;/p&gt;
+&lt;p&gt;When AWS creates a VPC Peering connection, it will use the infrastructure provided by AWS. This is the reason why connections forwarded by this proxy to the VPC Peering connection will be faster, than using the route over the public internet&lt;br&gt;
+It will change the route a device takes to get to its destination&lt;br&gt;
+Instead of sending the traffic through thousands of different routers, which might route your traffic over links which suffer congestion, the traffic will be sent basically &amp;ldquo;next-doors&amp;rdquo; to the EC2 instance, because it is located in America&lt;/p&gt;
+&lt;h1 id=&#34;8-configuring-wireguard-tunnels-and-routing&#34;&gt;8. Configuring WireGuard tunnels and routing&lt;/h1&gt;
+&lt;p&gt;When creating WireGuard tunnels we have to use keypairs for encryption&lt;/p&gt;
+&lt;p&gt;I will name the keys in these examples, so that they make sense when you see them&lt;br&gt;
+Private keys will be lowercase and their &lt;strong&gt;corresponding&lt;/strong&gt; public key will be upper case&lt;/p&gt;
+&lt;p&gt;In assymetric encryption you have to create one keypair for each participant. In our case this means we will have to two keypairs for each S2S connection&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;If you want to follow my configuration example, don&amp;rsquo;t mind the &lt;em&gt;private keys&lt;/em&gt; in the MikroTik configs, since RouterOS will generate them automatically for you&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;Site &amp;ldquo;AWS&amp;rdquo;:&lt;/p&gt;
+&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;/interface/wireguard/
+add name=s2s_aws2pepper private-key=&amp;#34;aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=&amp;#34; listen-port=51820
+add name=s2s_aws2chaeynz private-key=&amp;#34;ccccccccccccccccccccccccccccccccccccccccccc=&amp;#34; listen-port=51821
+
+/interface/wireguard/peers/
+add interface=s2s_aws2pepper public-key=&amp;#34;BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=&amp;#34; allowed-address=172.31.255.254/32,10.0.0.0/16 endpoint-port=51820 persistent-keepalive=25s
+add interface=s2s_aws2chaeynz public-key=&amp;#34;DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=&amp;#34; allowed-address=172.31.255.252/32,10.1.0.0/16 endpoint-port=51821 persistent-keepalive=25s
+
+/ip/address/
+add interface=s2s_aws2pepper address=172.31.255.255/31
+add interface=s2s_aws2chaeynz address=172.31.255.253/31
+
+/ip/route/
+add dst-address=10.0.0.0/16 gateway=s2s_aws2pepper
+add dst-address=10.1.0.0/16 gateway=s2s_aws2chaeynz
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Here we can see that AWS has a private key &lt;code&gt;aaa&lt;/code&gt;, which also created a public key &lt;code&gt;AAA&lt;/code&gt;. I have to copy this public key and enter it on the Site that connects to AWS on this tunnel, in this case Site &amp;ldquo;Pepper&amp;rdquo;.&lt;/p&gt;
+&lt;p&gt;Site &amp;ldquo;Pepper&amp;rdquo;:&lt;/p&gt;
+&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;/interface/wireguard/
+add name=s2s_pepper2aws private-key=&amp;#34;bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb=&amp;#34; listen-port=51820
+
+/interface/wireguard/peers/
+add interface=s2s_pepper2aws public-key=&amp;#34;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=&amp;#34; allowed-address=172.31.255.255/32,10.100.0.0/16,10.1.0.0/16 endpoint-address=elasticip.aws.instance endpoint-port=51820
+
+/ip/address/
+add interface=s2s_pepper2aws address=172.31.255.254/31
+
+/ip/route/
+add dst-address=10.1.0.0/16 gateway=s2s_pepper2aws
+add dst-address=10.100.0.0/16 gateway=s2s_pepper2aws
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;On Site &amp;ldquo;Pepper&amp;rdquo; you can see the private key &lt;code&gt;bbb&lt;/code&gt;. I already added the corresponding &lt;code&gt;BBB&lt;/code&gt; public key on AWS, as seen in Site &amp;ldquo;Pepper&amp;rdquo; and the connection will work as expected:&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;/images/hub-spoke-wireguard/cli-success1.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;Successful handshake between &amp;ldquo;AWS&amp;rdquo; and &amp;ldquo;Pepper&amp;rdquo;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;Moving on to the Site &amp;ldquo;Chaeynz&amp;rdquo;, which is my home network. It will use the WireGuard apt package, as beforementioned&lt;/p&gt;
+&lt;p&gt;Site &amp;ldquo;Chaeynz&amp;rdquo;:&lt;/p&gt;
+&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;# s2s_chaeynz2aws.conf
+[Interface]
+Address = 172.31.255.252/31
+ListenPort = 51821
+PrivateKey = ddddddddddddddddddddddddddddddddddddddddddd=
+
+[Peer]
+PublicKey = CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=
+AllowedIPs = 172.31.255.253/32, 10.0.0.0/16, 10.100.0.0/16
+Endpoint = elasticip.aws.instance:51821
+PersistentKeepalive = 25
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;The configuration looks a little bit different, but it will not contain any information that is different on MikroTik devices&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;Address&lt;/code&gt; directly specifies the IP address that is going to be assigned to the locally created tunnel interface when the WireGuard tunnel is created&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;PrivateKey&lt;/code&gt; is &lt;code&gt;ddd&lt;/code&gt;, whose corresponding public key &lt;code&gt;DDD&lt;/code&gt; we already defined in the config of the AWS instance&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;/images/hub-spoke-wireguard/cli-success2.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;Successful handshake between “AWS” and &amp;ldquo;Chaeynz”&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;After configuring this we have set up everything necessary to officially call it a Hub-to-Spoke VPN&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;/images/hub-spoke-wireguard/example3.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;h1 id=&#34;9-allowedips-in-wireguard&#34;&gt;9. AllowedIPs in WireGuard&lt;/h1&gt;
+&lt;p&gt;Let&amp;rsquo;s take a step back here&lt;/p&gt;
+&lt;p&gt;I have not yet talked about the AllowedIPs that I am specifying.&lt;/p&gt;
+&lt;p&gt;They were a very unique concept to me that I have not yet seen in other VPN protocols and I want to explain in depth how they work, according to the WireGuard Whitepaper.&lt;/p&gt;
+&lt;p&gt;You first have to understand, that you need to configure a &amp;ldquo;Peer&amp;rdquo;, in which you enforce a set of Keypairs to be used (using the Public Key you define, that is associated with devices that connect AND the private key you defined in the interface whose associated public key must be known be the devices that connect).&lt;br&gt;
+Finally you will need to configure the IPs that are allowed from those Peers&lt;/p&gt;
+&lt;p&gt;I can sum it up in a single sentence: Define the IPs that you expect to send traffic to AND receive traffic from, on the other side of the tunnel.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Why?&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;When you receive incoming traffic ON a tunnel interface FROM a Peer, it must first be DECRYPTED. That is important to remember.&lt;/p&gt;
+&lt;p&gt;WireGuard will check after each time when a packet is decrypted, if the source IP is defined in AllowedIPs and will drop the packet if the IP is not specified.&lt;/p&gt;
+&lt;h1 id=&#34;10-configuring-domain-records-in-route-53-for-geolocation-routing&#34;&gt;10. Configuring domain records in Route 53 for Geolocation Routing&lt;/h1&gt;
+&lt;p&gt;In AWS we can register and rent domains in Route 53.&lt;/p&gt;
+&lt;p&gt;As the name suggests, it is not merely for creating a domain, but also integrates perfectly for routing traffic dynamically to your AWS resources.&lt;/p&gt;
+&lt;p&gt;In the case of EC2 we have to define the target (&amp;ldquo;Value/Route traffic to&amp;rdquo;) as an IP. This should be an &lt;strong&gt;&lt;a href=&#34;https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/elastic-ip-addresses-eip.html&#34;&gt;Elastic IP&lt;/a&gt;&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;/images/hub-spoke-wireguard/aws-r53-records.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;Here you can see how DNS requests on my domain will be routed selectively by Geolocation to different IPs.&lt;br&gt;
+Clients from South America and North America will resolve the domain name to &lt;code&gt;100.64.200.1&lt;/code&gt;, while clients (Spokes) from Europe will resolve the domain name to &lt;code&gt;100.64.100.1&lt;/code&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;&lt;img src=&#34;/images/hub-spoke-wireguard/aws-r53-create.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;p&gt;We can implement Geolocation Routing by selecting the region, where we expect the clients (Spokes) IPs to come from and define the resolved IP address in the record value. Then repeat this process for each location you want to uniquely route&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;100.64.100.1&lt;/code&gt; will be my actual VPN Hub, which is located in Stockholm, while &lt;code&gt;100.64.200.1&lt;/code&gt; is the proxy that is located in Argentina, Buenos Aires (us-east-bue-1a)&lt;/p&gt;
+&lt;p&gt;Once the domain is set up, we know that our EC2 instance acting as proxy will receive traffic on it&amp;rsquo;s public facing interface.&lt;/p&gt;
+&lt;p&gt;The clients (Spokes) will not notice this, since they are using our domain to connect to the central hub and after it is resolved they will just initiate the connection to a different&lt;/p&gt;
+&lt;h1 id=&#34;11-creating-a-vpc-peering-connection&#34;&gt;11. Creating a VPC Peering connection&lt;/h1&gt;
+&lt;p&gt;&lt;img src=&#34;/images/hub-spoke-wireguard/aws-vpc-peering.png&#34; alt=&#34;&#34;&gt;&lt;/p&gt;
+&lt;p&gt;This is fairly easy. You have to request a VPC Peering connection from one VPC to the other VPC, by specifying the VPC ID&lt;/p&gt;
+&lt;p&gt;Notice the &amp;ldquo;Another Region&amp;rdquo; radio button&lt;/p&gt;
+&lt;p&gt;From the &amp;ldquo;Accepter&amp;rdquo; VPC, you will have to accept the request and you&amp;rsquo;re done&lt;/p&gt;
+&lt;h1 id=&#34;12-configuring-the-proxy&#34;&gt;12. Configuring the proxy&lt;/h1&gt;
+&lt;p&gt;As proxy software I used ad hoc &lt;code&gt;socat&lt;/code&gt;. It perfectly suits the job, since I have to manage two bidirectional bytestreams, from the client (Spoke) to the proxy and from the proxy to the VPN Hub&lt;/p&gt;
+&lt;p&gt;This can be achieved in socat by specifying a &lt;em&gt;listener&lt;/em&gt; and a &lt;em&gt;fork&lt;/em&gt;&lt;/p&gt;
+&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;socat UDP4-LISTEN:51820,fork UDP4:10.100.0.254:51820
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Socat will now forward incoming UDP traffic on port 51820 to the VPN Server over the VPC Peering connection&lt;/p&gt;
+&lt;p&gt;Amazingly enough this decreased the latency of a user based in South America from &lt;code&gt;220ms&lt;/code&gt; to &lt;code&gt;120ms&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;Keep in mind: The Hub is based in Stockholm!&lt;/p&gt;
+&lt;h1 id=&#34;13-conclusion&#34;&gt;13. Conclusion&lt;/h1&gt;
+&lt;p&gt;WireGuard is a lovely VPN protocol which provides you with enterprise-grade security at exceptional speeds&lt;/p&gt;
+&lt;p&gt;About my subnetting decisions I need to mention, that using /31 is definetely not the only way to go and I would not recommend it in every environment, since this might cause troubles&lt;/p&gt;
+&lt;p&gt;Specifically with MikroTik I have noticed that their bandwidth-test tool does not work as intended and I had to manually configure routes with preferred source IPs to get the tool bind to a different IP address&lt;/p&gt;
+&lt;p&gt;Optimizing the network performance through the use of a VPC Peering connection was an idea that just came to my mind&lt;/p&gt;
+&lt;p&gt;I talked with p3nnyW about it, showed it on a DrawIO diagram and we agreed that this will most probably work. After configuring it, I was amazed by the results&lt;/p&gt;
+&lt;p&gt;Other than that I found MikroTik very interesting to work with&lt;br&gt;
+MikroTik RouterOS is based on linux and I felt very much at home when using the CLI&lt;br&gt;
+Comparably the use of commands through autocompletion also felt like my experience with Cisco devices&lt;/p&gt;
+&lt;p&gt;I would highly recommend checking MikroTik out&lt;/p&gt;
+&lt;h1 id=&#34;14-glossary&#34;&gt;14. Glossary&lt;/h1&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Term&lt;/th&gt;
+&lt;th&gt;Definition&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;RouterOS&lt;/td&gt;
+&lt;td&gt;MikroTik&amp;rsquo;s OS for Routers&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;VM&lt;/td&gt;
+&lt;td&gt;Virtual Machine&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;CHR&lt;/td&gt;
+&lt;td&gt;MikroTik Cloud Hosted Router, a version of RouterOS refined for deployments in VMs&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;AWS&lt;/td&gt;
+&lt;td&gt;Amazon Web Services&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;EC2&lt;/td&gt;
+&lt;td&gt;Elastic Compute Cloud - AWS service for hosting cloud resources&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;VPC&lt;/td&gt;
+&lt;td&gt;Virtual Private Cloud - A secure, isolated private cloud hosted within a public cloud, also the exact name for the AWS service to deploy VPCs &lt;del&gt;(which is rare for AWS)&lt;/del&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;VPC Peering&lt;/td&gt;
+&lt;td&gt;Connect two different VPCs without an extra hop&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;IGW&lt;/td&gt;
+&lt;td&gt;Internet Gateway in an AWS VPC&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Route 53&lt;/td&gt;
+&lt;td&gt;DNS service for renting and managing domains on AWS&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;SIEM&lt;/td&gt;
+&lt;td&gt;Centralized security information and event management&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;VLSM&lt;/td&gt;
+&lt;td&gt;Variable Length Subnet Mask&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h1 id=&#34;15-document-history&#34;&gt;15. Document History:&lt;/h1&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Date&lt;/th&gt;
+&lt;th&gt;Version&lt;/th&gt;
+&lt;th&gt;Public?&lt;/th&gt;
+&lt;th&gt;Comment&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;2023-11-07&lt;/td&gt;
+&lt;td&gt;v1&lt;/td&gt;
+&lt;td&gt;No&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;2023-12-09&lt;/td&gt;
+&lt;td&gt;v2&lt;/td&gt;
+&lt;td&gt;Yes&lt;/td&gt;
+&lt;td&gt;Release&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h1 id=&#34;16-sources&#34;&gt;16. Sources:&lt;/h1&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://docs.netgate.com/pfsense/en/latest/recipes/wireguard-s2ms.html&#34;&gt;https://docs.netgate.com/pfsense/en/latest/recipes/wireguard-s2ms.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://aws.amazon.com/blogs/aws/new-almost-inter-region-vpc-peering/&#34;&gt;https://aws.amazon.com/blogs/aws/new-almost-inter-region-vpc-peering/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://datatracker.ietf.org/doc/html/rfc3021&#34;&gt;https://datatracker.ietf.org/doc/html/rfc3021&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://www.wireguard.com/papers/wireguard.pdf&#34;&gt;https://www.wireguard.com/papers/wireguard.pdf&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/elastic-ip-addresses-eip.html&#34;&gt;https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/elastic-ip-addresses-eip.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://help.mikrotik.com/docs/display/ROS/WireGuard&#34;&gt;https://help.mikrotik.com/docs/display/ROS/WireGuard&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://help.mikrotik.com/docs/display/ROS/Basic+Concepts&#34;&gt;https://help.mikrotik.com/docs/display/ROS/Basic+Concepts&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h1 id=&#34;17-special-thanks&#34;&gt;17. Special thanks:&lt;/h1&gt;
+&lt;blockquote&gt;
+&lt;ul&gt;
+&lt;li&gt;lordkitsuna | grep &amp;lsquo;Feedback &amp;amp; Troubleshooting&amp;rsquo;&lt;/li&gt;
+&lt;li&gt;CommanderKronos | grep &amp;lsquo;Feedback&amp;rsquo;&lt;/li&gt;
+&lt;li&gt;p3nnyW | grep &amp;lsquo;Feedback&amp;rdquo;&lt;/li&gt;
+&lt;li&gt;Keo | grep &amp;lsquo;Feedback&amp;rsquo;&lt;/li&gt;
+&lt;li&gt;bat | grep &amp;lsquo;QXF1YV9zYWx1dGVfRkI=&amp;rsquo;&lt;/li&gt;
+&lt;li&gt;Tati | grep &amp;lsquo;Mate&amp;rsquo;&lt;/li&gt;
+&lt;li&gt;pylee | grep &#39;&amp;rsquo;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;@TeamViewer no front btw&lt;/p&gt;
+&lt;p&gt;EOF&lt;/p&gt;
+</content>
+    </item>
+    
+    <item>
+      <title>Marianas Web</title>
+      <link>/posts/marianas-web/</link>
+      <pubDate>Mon, 02 Oct 2023 00:23:54 +0200</pubDate>
+      
+      <guid>/posts/marianas-web/</guid>
+      <description>During this article I will explore this topic from my perspective as a networking person. Does it exist? Is it feasible? Let&amp;rsquo;s look into it
+What is the Marianas Web? It is a fictional layer of the &amp;lsquo;internet&amp;rsquo; that has following key points:
+Can&amp;rsquo;t be / wasn&amp;rsquo;t yet proven to exist Can only be accessed using &amp;ldquo;Polymeric Falcighol Derivation&amp;rdquo; which requires Quantum Computers You&amp;rsquo;re probably asking yourself, what the fuck is &amp;ldquo;Polymeric Falcighol Derivation&amp;rdquo;.</description>
+      <content>&lt;p&gt;During this article I will explore this topic from my perspective as a networking person.
+Does it exist? Is it feasible? Let&amp;rsquo;s look into it&lt;/p&gt;
+&lt;h1 id=&#34;what-is-the-marianas-web&#34;&gt;What is the Marianas Web?&lt;/h1&gt;
+&lt;p&gt;It is a &lt;strong&gt;fictional&lt;/strong&gt; layer of the &amp;lsquo;internet&amp;rsquo; that has following key points:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Can&amp;rsquo;t be / wasn&amp;rsquo;t yet proven to exist&lt;/li&gt;
+&lt;li&gt;Can only be accessed using &amp;ldquo;Polymeric Falcighol Derivation&amp;rdquo; which requires Quantum Computers&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;You&amp;rsquo;re probably asking yourself, what the fuck is &amp;ldquo;Polymeric Falcighol Derivation&amp;rdquo;.
+Well, to this day I still do. Here is the explanation from Urban Dictionary:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;A complex algorithm that is often associated with the Marina Web (Level 5 Web); needed to access said web. The Marina Web is the deepest part of the internet and is only rumored to exist. [&amp;hellip;]&lt;br&gt;
+Many often write it off as a hoax however no evidence proofing or dis-proofing exists
+However the computing power/knowledge needed to process and compute the algorithm is quantum computing&lt;/p&gt;
+&lt;p&gt;&lt;a href=&#34;https://www.urbandictionary.com/define.php?term=polymeric%20falcighol%20derivation&#34;&gt;https://www.urbandictionary.com/define.php?term=polymeric%20falcighol%20derivation&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;&lt;strong&gt;I will call it out as bs&lt;/strong&gt;, probably just a term some skid created, but the key point is that it requires a quantum computer.&lt;/p&gt;
+&lt;p&gt;Hence, let us go forth in exploring how this concept could be implemented&lt;/p&gt;
+&lt;hr&gt;
+&lt;h1 id=&#34;what-does-it-need-a-quantum-computer-for&#34;&gt;What does it need a quantum computer for?&lt;/h1&gt;
+&lt;p&gt;A quantum processor gives the ability to represent the values 0, 1 and values in between both with Qubits.&lt;br&gt;
+I&amp;rsquo;m not deep into Quantum computing, but I can treat this as an abstract concept and further elaborate the theory.&lt;/p&gt;
+&lt;p&gt;We have to options:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Needing the quantum computers for computationally intensive tasks required to complete before / during sending network traffic on the Marianas web&lt;/li&gt;
+&lt;li&gt;Needing the quantum computers because data is sent as Qubits encoded on a cable&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h1 id=&#34;qubit-based-network-traffic&#34;&gt;Qubit-based network traffic&lt;/h1&gt;
+&lt;p&gt;When we send network traffic, it will be represented by a change in voltage.&lt;br&gt;
+Here&amp;rsquo;s a breakdown:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;For 10BASE-T or 100BASE-TX, the data is usually carried on pairs 2 and 3 (often the blue and green pairs).&lt;/li&gt;
+&lt;li&gt;When a &amp;lsquo;1&amp;rsquo; is sent, the voltage may transition from +2.5V to -2.5V on one wire of the pair, and from -2.5V to +2.5V on the other.&lt;/li&gt;
+&lt;li&gt;When a &amp;lsquo;0&amp;rsquo; is sent, the voltage levels would remain constant at their last state, either +2.5V or -2.5V.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Bit encoding standard &amp;ldquo;PAM-5&amp;rdquo;&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;At present, there is no network connecting quantum processors, or quantum repeaters deployed outside a lab.
+And that is basically the problem.
+Since there is no standard, basically any network of Quantum computers that is under NDA and Top Secret restrictions would be &amp;ldquo;The Marianas Web&amp;rdquo; wouldn&amp;rsquo;t it?&lt;/p&gt;
+&lt;p&gt;&lt;a href=&#34;https://en.wikipedia.org/wiki/Quantum_network#Quantum_internet&#34;&gt;https://en.wikipedia.org/wiki/Quantum_network#Quantum_internet&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;hr&gt;
+&lt;p&gt;Also, since all Routers on the internet use IP, Ethernet and so on, and encode their data as Bits on the cable, not Qubits, it would be simply IMPOSSIBLE that there is any &amp;ldquo;Hidden Network&amp;rdquo; INSIDE of the Internet that communicates with Qubits as Data Unit. It would require it&amp;rsquo;s entirely own Protocol Stack that is not yet supported by any Routers on the internet.&lt;/p&gt;
+&lt;h1 id=&#34;computationally-intensive-tasks&#34;&gt;Computationally intensive tasks&lt;/h1&gt;
+&lt;p&gt;This is the only way I see how it would make sense that there is a hidden network on the internet. It would be feasible and would be using Protocols we know to transfer the data, but the data would be encrypted with algorithms that are not publicly available and probably also not standardized.
+In that case the Marianas Web would be a layer of the internet, where people send data encrypted with their Quantum Computers down in their basement (cuz everyone has them right) and the communications would be perfectly visible, but the content impossible to see by todays standards.&lt;/p&gt;
+&lt;p&gt;Users for this type of network would be governments and highly, highly sophisticated organizations / criminal organizations.
+The most secure government secrets would be transferred here and noone will be able to decrypt it for some decades.&lt;/p&gt;
+&lt;p&gt;They will most probably also use their own protocols above Layer 3, since Routers on the internet don&amp;rsquo;t look further than that.&lt;/p&gt;
+&lt;h1 id=&#34;conclusion&#34;&gt;Conclusion&lt;/h1&gt;
+&lt;p&gt;Having a network that noone knows about is an interesting idea, especially since it would be right at our feet.
+However the way it is described gives too much room for interpretation and will therefore land in my mental corner of &amp;lsquo;script kiddie terms&amp;rsquo;&lt;/p&gt;
+&lt;h1 id=&#34;document-history&#34;&gt;Document History:&lt;/h1&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Date&lt;/th&gt;
+&lt;th&gt;Version&lt;/th&gt;
+&lt;th&gt;Public?&lt;/th&gt;
+&lt;th&gt;Comment&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;2023-11-07&lt;/td&gt;
+&lt;td&gt;v1&lt;/td&gt;
+&lt;td&gt;No&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;2023-12-09&lt;/td&gt;
+&lt;td&gt;v2&lt;/td&gt;
+&lt;td&gt;Yes&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;EOF&lt;/p&gt;
+</content>
+    </item>
+    
+  </channel>
+</rss>
